@@ -80,6 +80,18 @@ class CircuitBreakerMetrics implements CircuitBreaker.Metrics {
             CircuitBreakerConfig.SlidingWindowType.COUNT_BASED, circuitBreakerConfig);
     }
 
+    static CircuitBreakerMetrics forHalfOpenRecovery(int minimumNumberOfCalls,
+        CircuitBreakerConfig circuitBreakerConfig) {
+        CircuitBreakerMetrics metrics = new CircuitBreakerMetrics(minimumNumberOfCalls,
+            CircuitBreakerConfig.SlidingWindowType.COUNT_BASED, circuitBreakerConfig);
+        metrics.minimumNumberOfCalls = minimumNumberOfCalls;
+        return metrics;
+    }
+
+    Result checkIfThresholdsExceeded() {
+        return checkIfThresholdsExceeded(metrics.getSnapshot());
+    }
+
     static CircuitBreakerMetrics forForcedOpen(CircuitBreakerConfig circuitBreakerConfig) {
         return new CircuitBreakerMetrics(0, CircuitBreakerConfig.SlidingWindowType.COUNT_BASED,
             circuitBreakerConfig);
