@@ -1,17 +1,20 @@
 /*
- * Copyright 2026 authors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *  Copyright 2026 authors
  *
- *        http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.circuitbreaker.event;
 
@@ -24,7 +27,8 @@ import static java.util.Objects.requireNonNull;
  * The snapshots retain the phase data at the time of the transition.
  * Recovery exit is represented by the ordinary state transition event.
  */
-public final class CircuitBreakerOnHalfOpenPhaseTransitionEvent extends AbstractCircuitBreakerEvent {
+public final class CircuitBreakerOnHalfOpenPhaseTransitionEvent
+    extends AbstractCircuitBreakerEvent {
 
     private final HalfOpenPhase previousPhase;
     private final HalfOpenPhase phase;
@@ -82,7 +86,8 @@ public final class CircuitBreakerOnHalfOpenPhaseTransitionEvent extends Abstract
 
     @Override
     public String toString() {
-        return String.format("%s: CircuitBreaker '%s' changed HALF_OPEN recovery phase from %s to %s (%s)",
+        return String.format(
+            "%s: CircuitBreaker '%s' changed HALF_OPEN recovery phase from %s to %s (%s)",
             getCreationTime(), getCircuitBreakerName(), previousPhase, phase, reason);
     }
 

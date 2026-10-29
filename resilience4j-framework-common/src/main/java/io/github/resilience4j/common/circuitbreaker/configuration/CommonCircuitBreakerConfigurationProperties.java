@@ -63,7 +63,8 @@ public class CommonCircuitBreakerConfigurationProperties extends CommonPropertie
     }
 
     private record ResolvedConfig(CircuitBreakerConfig config,
-        @Nullable HalfOpenRecoveryProperties recoveryProperties) { }
+        @Nullable HalfOpenRecoveryProperties recoveryProperties) {
+    }
 
     private ResolvedConfig resolveConfig(String instanceName, @Nullable InstanceProperties properties,
         CompositeCustomizer<CircuitBreakerConfigCustomizer> customizer, Set<String> resolving) {
@@ -75,19 +76,25 @@ public class CommonCircuitBreakerConfigurationProperties extends CommonPropertie
             if (properties != null && StringUtils.isNotEmpty(properties.getBaseConfig())) {
                 String baseName = properties.getBaseConfig();
                 InstanceProperties baseProperties = configs.get(baseName);
-                if (baseProperties == null) throw new ConfigurationNotFoundException(baseName);
+                if (baseProperties == null) {
+                    throw new ConfigurationNotFoundException(baseName);
+                }
                 base = resolveConfig(baseName, baseProperties, customizer, resolving);
                 mergeProperties(properties, baseProperties);
             } else if (configs.get(instanceName) != null) {
                 InstanceProperties direct = configs.get(instanceName);
-                if (properties != null) mergeProperties(properties, direct);
+                if (properties != null) {
+                    mergeProperties(properties, direct);
+                }
                 CircuitBreakerConfig directConfig = buildConfig(null, direct, customizer, instanceName,
                     direct.getHalfOpenRecovery());
                 base = resolvedConfig(directConfig, direct.getHalfOpenRecovery());
             } else if (configs.get(DEFAULT) != null) {
                 InstanceProperties defaults = configs.get(DEFAULT);
                 base = resolveConfig(DEFAULT, defaults, customizer, resolving);
-                if (properties != null) mergeProperties(properties, defaults);
+                if (properties != null) {
+                    mergeProperties(properties, defaults);
+                }
             }
             HalfOpenRecoveryProperties recovery = HalfOpenRecoveryProperties.merge(
                 properties == null ? null : properties.getHalfOpenRecovery(),
@@ -103,14 +110,16 @@ public class CommonCircuitBreakerConfigurationProperties extends CommonPropertie
     private static ResolvedConfig resolvedConfig(CircuitBreakerConfig config,
         @Nullable HalfOpenRecoveryProperties properties) {
         if (config.getHalfOpenRecoveryConfig() != null) {
-            return new ResolvedConfig(config, HalfOpenRecoveryProperties.fromConfig(config.getHalfOpenRecoveryConfig()));
+            return new ResolvedConfig(config,
+                HalfOpenRecoveryProperties.fromConfig(config.getHalfOpenRecoveryConfig()));
         }
         // Preserve latent settings when disabled, without modifying shared property beans.
         return new ResolvedConfig(config, properties == null ? null : HalfOpenRecoveryProperties.merge(
             new HalfOpenRecoveryProperties().setEnabled(false), properties));
     }
 
-    private CircuitBreakerConfig buildConfig(@Nullable CircuitBreakerConfig baseConfig, @Nullable InstanceProperties properties,
+    private CircuitBreakerConfig buildConfig(@Nullable CircuitBreakerConfig baseConfig,
+        @Nullable InstanceProperties properties,
         CompositeCustomizer<CircuitBreakerConfigCustomizer> compositeCircuitBreakerCustomizer,
         String instanceName, @Nullable HalfOpenRecoveryProperties recoveryProperties) {
         Builder builder = baseConfig == null ? custom() : from(baseConfig);
@@ -163,8 +172,6 @@ public class CommonCircuitBreakerConfigurationProperties extends CommonPropertie
                 builder.permittedNumberOfCallsInHalfOpenState(
                     properties.getPermittedNumberOfCallsInHalfOpenState());
             }
-
-
 
             if (properties.recordExceptions != null) {
                 builder.recordExceptions(properties.recordExceptions);

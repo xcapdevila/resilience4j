@@ -90,9 +90,11 @@ public class CircuitBreakerMetricsPublisher extends AbstractMetricsPublisher<Cir
             String admissionAttempts = name(prefix, name, ADMISSION_ATTEMPTS);
             String admissionPermittedAttempts = name(prefix, name, ADMISSION_PERMITTED_ATTEMPTS);
             metricRegistry.register(admissionAttempts,
-                new FunctionCounter(() -> circuitBreaker.getAdmissionMetrics().getNumberOfAttempts()));
+                new FunctionCounter(() -> circuitBreaker.getAdmissionMetrics()
+                    .getNumberOfAttempts()));
             metricRegistry.register(admissionPermittedAttempts,
-                new FunctionCounter(() -> circuitBreaker.getAdmissionMetrics().getNumberOfPermittedAttempts()));
+                new FunctionCounter(() -> circuitBreaker.getAdmissionMetrics()
+                    .getNumberOfPermittedAttempts()));
             metricNamesSet.add(admissionAttempts);
             metricNamesSet.add(admissionPermittedAttempts);
             String recoveryPhase = name(prefix, name, RECOVERY_PHASE);
@@ -100,7 +102,8 @@ public class CircuitBreakerMetricsPublisher extends AbstractMetricsPublisher<Cir
             metricRegistry.register(recoveryPhase,
                 (Gauge<Integer>) () -> circuitBreaker.getHalfOpenPhase().getPhase());
             metricRegistry.register(recoveryTrafficPercentage,
-                (Gauge<Integer>) () -> circuitBreaker.getHalfOpenPhase().getPermittedTrafficPercentage());
+                (Gauge<Integer>) () -> circuitBreaker.getHalfOpenPhase()
+                    .getPermittedTrafficPercentage());
             metricNamesSet.add(recoveryPhase);
             metricNamesSet.add(recoveryTrafficPercentage);
         }

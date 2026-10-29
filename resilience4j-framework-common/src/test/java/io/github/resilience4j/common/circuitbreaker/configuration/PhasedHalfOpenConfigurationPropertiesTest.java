@@ -1,10 +1,25 @@
 /*
- * Copyright 2026 Resilience4j Authors
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy at https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Copyright 2026 authors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.common.circuitbreaker.configuration;
+
+import java.time.Duration;
+import java.util.Collections;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
@@ -12,9 +27,6 @@ import io.github.resilience4j.common.CompositeCustomizer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import java.time.Duration;
-import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,7 +46,8 @@ class PhasedHalfOpenConfigurationPropertiesTest {
 
         assertThat(recovery.isInitialTrafficPercentageAutomatic()).isTrue();
         assertThat(recovery.getInitialTrafficPercentage()).isEqualTo(step);
-        assertThat(properties.getConfigs().get("phased").getHalfOpenRecovery().getInitialTrafficPercentage()).isNull();
+        assertThat(properties.getConfigs().get("phased").getHalfOpenRecovery().getInitialTrafficPercentage())
+            .isNull();
     }
 
     @Test
@@ -54,7 +67,8 @@ class PhasedHalfOpenConfigurationPropertiesTest {
     void automaticModeSurvivesMultipleSharedConfigurationLevels() {
         var properties = configuredProperties();
         properties.getConfigs().get("phased").getHalfOpenRecovery().setInitialTrafficPercentage(0);
-        properties.getConfigs().put("middle", new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
+        properties.getConfigs()
+            .put("middle", new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
             .setBaseConfig("phased")
             .setHalfOpenRecovery(new HalfOpenRecoveryProperties().setTrafficPercentageStep(30)));
         var instance = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
@@ -65,7 +79,8 @@ class PhasedHalfOpenConfigurationPropertiesTest {
 
         assertThat(recovery.isInitialTrafficPercentageAutomatic()).isTrue();
         assertThat(recovery.getInitialTrafficPercentage()).isEqualTo(45);
-        assertThat(properties.getConfigs().get("middle").getHalfOpenRecovery().getInitialTrafficPercentage()).isNull();
+        assertThat(properties.getConfigs().get("middle").getHalfOpenRecovery().getInitialTrafficPercentage())
+            .isNull();
     }
 
     @Test
@@ -75,8 +90,9 @@ class PhasedHalfOpenConfigurationPropertiesTest {
         var instance = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
             .setBaseConfig("phased")
             .setHalfOpenRecovery(new HalfOpenRecoveryProperties().setTrafficPercentageStep(45));
-        var customizer = CircuitBreakerConfigCustomizer.of("phased", builder -> builder.halfOpenRecoveryConfig(
-            HalfOpenRecoveryConfig.custom().trafficPercentageStep(30).build()));
+        var customizer = CircuitBreakerConfigCustomizer.of("phased",
+            builder -> builder.halfOpenRecoveryConfig(
+                HalfOpenRecoveryConfig.custom().trafficPercentageStep(30).build()));
 
         var recovery = properties.createCircuitBreakerConfig("backend", instance,
             new CompositeCustomizer<>(Collections.singletonList(customizer))).getHalfOpenRecoveryConfig();
@@ -92,7 +108,9 @@ class PhasedHalfOpenConfigurationPropertiesTest {
             .setEnabled(false).setInitialTrafficPercentage(0);
         var instance = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
             .setBaseConfig("phased")
-            .setHalfOpenRecovery(new HalfOpenRecoveryProperties().setEnabled(true).setTrafficPercentageStep(30));
+            .setHalfOpenRecovery(new HalfOpenRecoveryProperties()
+            .setEnabled(true)
+            .setTrafficPercentageStep(30));
 
         var recovery = config(properties, instance).getHalfOpenRecoveryConfig();
 
@@ -120,8 +138,10 @@ class PhasedHalfOpenConfigurationPropertiesTest {
         CircuitBreakerConfig config = config(properties, instance);
 
         assertThat(config.getHalfOpenRecoveryConfig().getTrafficPercentageStep()).isEqualTo(5);
-        assertThat(config.getHalfOpenRecoveryConfig().getFailureStrategy()).isEqualTo(HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK);
-        assertThat(config.getHalfOpenRecoveryConfig().getMinimumPhaseDuration()).isEqualTo(Duration.ofSeconds(2));
+        assertThat(config.getHalfOpenRecoveryConfig().getFailureStrategy())
+            .isEqualTo(HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK);
+        assertThat(config.getHalfOpenRecoveryConfig().getMinimumPhaseDuration())
+            .isEqualTo(Duration.ofSeconds(2));
         assertThat(config.getPermittedNumberOfCallsInHalfOpenState()).isEqualTo(12);
     }
 
@@ -185,10 +205,12 @@ class PhasedHalfOpenConfigurationPropertiesTest {
         var properties = configuredProperties();
         properties.getConfigs().get("phased").getHalfOpenRecovery()
             .setEnabled(false).setInitialTrafficPercentage(25);
-        properties.getConfigs().put("middle", new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
+        properties.getConfigs()
+            .put("middle", new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
             .setBaseConfig("phased")
             .setHalfOpenRecovery(new HalfOpenRecoveryProperties().setTrafficPercentageStep(10)));
-        var disabled = new CommonCircuitBreakerConfigurationProperties.InstanceProperties().setBaseConfig("middle");
+        var disabled = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
+            .setBaseConfig("middle");
 
         assertThat(config(properties, disabled).getHalfOpenRecoveryConfig()).isNull();
 
@@ -196,6 +218,7 @@ class PhasedHalfOpenConfigurationPropertiesTest {
             .setBaseConfig("middle")
             .setHalfOpenRecovery(new HalfOpenRecoveryProperties().setEnabled(true));
         var recovery = config(properties, enabled).getHalfOpenRecoveryConfig();
+
         assertThat(recovery.getInitialTrafficPercentage()).isEqualTo(25);
         assertThat(recovery.getTrafficPercentageStep()).isEqualTo(10);
         assertThat(recovery.getMinimumPhaseDuration()).isEqualTo(Duration.ofSeconds(2));
@@ -204,9 +227,11 @@ class PhasedHalfOpenConfigurationPropertiesTest {
     @Test
     void inheritsEffectiveRecoveryValuesFromBaseCustomizer() {
         var properties = configuredProperties();
-        var instance = new CommonCircuitBreakerConfigurationProperties.InstanceProperties().setBaseConfig("phased");
-        var customizer = CircuitBreakerConfigCustomizer.of("phased", builder -> builder.halfOpenRecoveryConfig(
-            HalfOpenRecoveryConfig.custom().initialTrafficPercentage(25).build()));
+        var instance = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
+            .setBaseConfig("phased");
+        var customizer = CircuitBreakerConfigCustomizer.of("phased",
+            builder -> builder.halfOpenRecoveryConfig(
+                HalfOpenRecoveryConfig.custom().initialTrafficPercentage(25).build()));
 
         var config = properties.createCircuitBreakerConfig("backend", instance,
             new CompositeCustomizer<>(Collections.singletonList(customizer)));
@@ -238,7 +263,7 @@ class PhasedHalfOpenConfigurationPropertiesTest {
     }
 
     private static CircuitBreakerConfig config(CommonCircuitBreakerConfigurationProperties properties,
-            CommonCircuitBreakerConfigurationProperties.InstanceProperties instance) {
+        CommonCircuitBreakerConfigurationProperties.InstanceProperties instance) {
         return properties.createCircuitBreakerConfig("backend", instance,
             new CompositeCustomizer<>(Collections.emptyList()));
     }

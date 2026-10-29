@@ -41,7 +41,8 @@ public class CircuitBreakerEventDTOFactory {
                     .setStateTransition(onStateTransitionEvent.getStateTransition())
                     .build();
             case HALF_OPEN_PHASE_TRANSITION:
-                CircuitBreakerOnHalfOpenPhaseTransitionEvent phaseEvent = (CircuitBreakerOnHalfOpenPhaseTransitionEvent) event;
+                CircuitBreakerOnHalfOpenPhaseTransitionEvent phaseEvent =
+                    (CircuitBreakerOnHalfOpenPhaseTransitionEvent) event;
                 CircuitBreakerEventDTO phaseDTO = newCircuitBreakerEventDTOBuilder(phaseEvent).build();
                 phaseDTO.setPreviousHalfOpenPhase(phaseEvent.getPreviousPhase());
                 phaseDTO.setHalfOpenPhase(phaseEvent.getPhase());

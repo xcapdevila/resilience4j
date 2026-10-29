@@ -1,13 +1,22 @@
 /*
- * Copyright 2026 Resilience4j Authors
- * Licensed under the Apache License, Version 2.0 (the "License");
- * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Copyright 2026 authors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.circuitbreaker.internal;
-
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
-import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -25,6 +34,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import org.junit.jupiter.api.Test;
+
 import static io.github.resilience4j.circuitbreaker.CircuitBreaker.State.CLOSED;
 import static io.github.resilience4j.circuitbreaker.CircuitBreaker.State.HALF_OPEN;
 import static io.github.resilience4j.circuitbreaker.CircuitBreaker.State.OPEN;
@@ -32,8 +45,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,7 +68,9 @@ class CircuitBreakerTransitionOwnershipTest {
         doAnswer(invocation -> {
             if (Thread.currentThread() == firstCaller.get()) {
                 constructingHalfOpen.countDown();
-                if (!resume.await(10, TimeUnit.SECONDS)) throw new AssertionError("No release");
+                if (!resume.await(10, TimeUnit.SECONDS)) {
+                    throw new AssertionError("No release");
+                }
             }
             return invocation.callRealMethod();
         }).when(config).getSlidingWindowSynchronizationStrategy();
@@ -69,11 +84,13 @@ class CircuitBreakerTransitionOwnershipTest {
                 firstCaller.set(Thread.currentThread());
                 return breaker.tryAcquirePermission();
             });
+
             assertThat(constructingHalfOpen.await(10, TimeUnit.SECONDS)).isTrue();
 
             assertThat(breaker.tryAcquirePermission()).isTrue();
 
             resume.countDown();
+
             assertThat(firstPermission.get(10, TimeUnit.SECONDS)).isTrue();
             assertThat(breaker.getState()).isEqualTo(HALF_OPEN);
             assertThat(transitions.get()).isEqualTo(1);
@@ -136,7 +153,9 @@ class CircuitBreakerTransitionOwnershipTest {
                     if (pause.get()) {
                         constructingOpen.countDown();
                         try {
-                            if (!resume.await(10, TimeUnit.SECONDS)) throw new AssertionError("No release");
+                            if (!resume.await(10, TimeUnit.SECONDS)) {
+                                throw new AssertionError("No release");
+                            }
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             throw new AssertionError(e);
@@ -151,6 +170,7 @@ class CircuitBreakerTransitionOwnershipTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<?> callback = executor.submit(halfOpenDeadline);
+
             assertThat(constructingOpen.await(10, TimeUnit.SECONDS)).isTrue();
             breaker.reset();
             resume.countDown();
@@ -169,7 +189,8 @@ class CircuitBreakerTransitionOwnershipTest {
         private final ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
         private final List<Runnable> tasks = new ArrayList<>();
         private final List<ScheduledFuture<?>> futures = new ArrayList<>();
-        private Runnable onSchedule = () -> { };
+        private Runnable onSchedule = () -> {
+        };
 
         private CapturingScheduler() {
             when(factory.getScheduler()).thenReturn(executor);

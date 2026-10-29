@@ -1,12 +1,22 @@
 /*
- * Copyright 2026 Resilience4j Authors
- * Licensed under the Apache License, Version 2.0 (the "License");
- * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Copyright 2026 authors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.circuitbreaker.internal;
-
-import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
-import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -20,6 +30,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
+import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
+import org.junit.jupiter.api.Test;
 
 import static io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK;
 import static io.github.resilience4j.circuitbreaker.internal.CircuitBreakerMetrics.Result;
@@ -40,6 +53,7 @@ class HalfOpenRecoveryPolicyTest {
                 .trafficPercentageStep(targets[0]).build());
             for (int index = 0; index < targets.length; index++) {
                 var phase = policy.newPhase(index, START);
+
                 assertThat(phase.getSnapshot().getPermittedTrafficPercentage()).isEqualTo(targets[index]);
                 assertThat(phase.getSnapshot().getNumberOfPhases()).isEqualTo(targets.length);
                 assertThat(phase.evaluate(Result.BELOW_THRESHOLDS, at(START))).isEqualTo(Decision.STAY);
@@ -56,11 +70,14 @@ class HalfOpenRecoveryPolicyTest {
         int[] targets = {5, 35, 65, 95, 100};
         for (int index = 0; index < targets.length; index++) {
             var phase = policy.newPhase(index, START);
+
             assertThat(phase.getSnapshot().getPermittedTrafficPercentage()).isEqualTo(targets[index]);
             assertThat(phase.getSnapshot().getPhase()).isEqualTo(index + 1);
         }
+
         assertThatThrownBy(() -> policy.newPhase(-1, START)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> policy.newPhase(targets.length, START)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> policy.newPhase(targets.length, START))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -101,6 +118,7 @@ class HalfOpenRecoveryPolicyTest {
                     .isEqualTo(Decision.OPEN);
             }
         }
+
         assertThat(policy.newPhase(0, START)
             .evaluate(Result.BELOW_MINIMUM_CALLS_THRESHOLD, unreadableClock())).isEqualTo(Decision.STAY);
     }
@@ -111,8 +129,11 @@ class HalfOpenRecoveryPolicyTest {
         for (int segment = 0; segment < 100; segment++) {
             int admitted = 0;
             for (int attempt = 0; attempt < 20; attempt++) {
-                if (phase.tryAcquirePermission()) admitted++;
+                if (phase.tryAcquirePermission()) {
+                    admitted++;
+                }
             }
+
             assertThat(admitted).isEqualTo(1);
         }
         var fullyOpenPhase = new HalfOpenRecoveryPolicy(config().initialTrafficPercentage(100).build())
@@ -126,9 +147,11 @@ class HalfOpenRecoveryPolicyTest {
     void aFreshPhaseGetsItsOwnSamplerAndDwellWithoutMutatingThePreviousPhase() {
         HalfOpenRecoveryPolicy policy = new HalfOpenRecoveryPolicy(config().build());
         var previous = policy.newPhase(0, START);
+
         assertThat(previous.tryAcquirePermission()).isTrue();
         assertThat(previous.tryAcquirePermission()).isFalse();
         var retried = policy.newPhase(0, START.plus(DWELL));
+
         assertThat(retried.tryAcquirePermission()).isTrue();
         assertThat(previous.tryAcquirePermission()).isFalse();
         assertThat(previous.evaluate(Result.BELOW_THRESHOLDS, at(START.plus(DWELL))))
@@ -150,13 +173,18 @@ class HalfOpenRecoveryPolicyTest {
                     start.await(10, TimeUnit.SECONDS);
                     int admitted = 0;
                     for (int attempt = 0; attempt < 1000; attempt++) {
-                        if (phase.tryAcquirePermission()) admitted++;
+                        if (phase.tryAcquirePermission()) {
+                            admitted++;
+                        }
                     }
                     return admitted;
                 }));
             }
             int admitted = 0;
-            for (Future<Integer> task : tasks) admitted += task.get(10, TimeUnit.SECONDS);
+            for (Future<Integer> task : tasks) {
+                admitted += task.get(10, TimeUnit.SECONDS);
+            }
+
             assertThat(admitted).isEqualTo(2960);
         } finally {
             executor.shutdownNow();
@@ -178,9 +206,20 @@ class HalfOpenRecoveryPolicyTest {
 
     private static Clock unreadableClock() {
         return new Clock() {
-            @Override public ZoneId getZone() { return ZoneOffset.UTC; }
-            @Override public Clock withZone(ZoneId zone) { return this; }
-            @Override public Instant instant() { throw new AssertionError("This decision does not need the time"); }
+            @Override
+            public ZoneId getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                throw new AssertionError("This decision does not need the time");
+            }
         };
     }
 }

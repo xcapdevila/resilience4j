@@ -1,12 +1,27 @@
 /*
- * Copyright 2026 Resilience4j Authors
- * Licensed under the Apache License, Version 2.0 (the "License");
- * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Copyright 2026 authors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.circuitbreaker;
 
-import org.junit.jupiter.api.Test;
 import java.time.Duration;
+
+import org.junit.jupiter.api.Test;
+
 import static io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -15,6 +30,7 @@ class HalfOpenRecoveryConfigTest {
     @Test
     void defaultsAndFromPreserveAnImmutableRecoveryPolicy() {
         HalfOpenRecoveryConfig base = HalfOpenRecoveryConfig.custom().build();
+
         assertThat(base.isInitialTrafficPercentageAutomatic()).isTrue();
         assertThat(base.getInitialTrafficPercentage()).isEqualTo(5);
         assertThat(base.getTrafficPercentageStep()).isEqualTo(5);
@@ -38,6 +54,7 @@ class HalfOpenRecoveryConfigTest {
             assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().trafficPercentageStep(invalid))
                 .isInstanceOf(IllegalArgumentException.class);
         }
+
         assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().trafficPercentageStep(0))
             .isInstanceOf(IllegalArgumentException.class);
         assertThat(HalfOpenRecoveryConfig.custom().initialTrafficPercentage(0).build()
@@ -78,10 +95,12 @@ class HalfOpenRecoveryConfigTest {
     @Test
     void invalidStepFailsWithoutSilentlyReplacingTheConfiguredValue() {
         HalfOpenRecoveryConfig.Builder builder = HalfOpenRecoveryConfig.custom().trafficPercentageStep(30);
+
         assertThatThrownBy(() -> builder.trafficPercentageStep(120))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("trafficPercentageStep must be between 1 and 100");
         HalfOpenRecoveryConfig unchanged = builder.build();
+
         assertThat(unchanged.getTrafficPercentageStep()).isEqualTo(30);
         assertThat(unchanged.getInitialTrafficPercentage()).isEqualTo(30);
         assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().initialTrafficPercentage(100)
@@ -99,6 +118,7 @@ class HalfOpenRecoveryConfigTest {
             assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().minimumNumberOfCalls(invalid))
                 .isInstanceOf(IllegalArgumentException.class);
         }
+
         assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().minimumPhaseDuration(null))
             .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().failureStrategy(null))
@@ -109,6 +129,7 @@ class HalfOpenRecoveryConfigTest {
     void parentCopyPreservesRecoveryAndNullExplicitlyDisablesIt() {
         HalfOpenRecoveryConfig policy = HalfOpenRecoveryConfig.custom().build();
         CircuitBreakerConfig enabled = CircuitBreakerConfig.custom().halfOpenRecoveryConfig(policy).build();
+
         assertThat(CircuitBreakerConfig.from(enabled).build().getHalfOpenRecoveryConfig()).isSameAs(policy);
         assertThat(CircuitBreakerConfig.from(enabled).halfOpenRecoveryConfig(null).build()
             .getHalfOpenRecoveryConfig()).isNull();

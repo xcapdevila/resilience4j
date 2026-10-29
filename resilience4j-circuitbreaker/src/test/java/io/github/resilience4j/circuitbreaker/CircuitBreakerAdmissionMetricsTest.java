@@ -1,12 +1,22 @@
 /*
- * Copyright 2026 Resilience4j Authors
- * Licensed under the Apache License, Version 2.0 (the "License");
- * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Copyright 2026 authors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.circuitbreaker;
-
-import io.github.resilience4j.circuitbreaker.CircuitBreaker.AdmissionMetrics;
-import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -26,6 +36,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker.AdmissionMetrics;
+import org.junit.jupiter.api.Test;
+
 import static io.github.resilience4j.circuitbreaker.CircuitBreaker.State.CLOSED;
 import static io.github.resilience4j.circuitbreaker.CircuitBreaker.State.HALF_OPEN;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,8 +53,11 @@ class CircuitBreakerAdmissionMetricsTest {
         CircuitBreaker breaker = recovering(new ControlledClock(), 5);
         int admitted = 0;
         for (int i = 0; i < 100; i++) {
-            if (permission(breaker, i % 3 != 0)) admitted++;
+            if (permission(breaker, i % 3 != 0)) {
+                admitted++;
+            }
         }
+
         assertThat(admitted).isEqualTo(5);
         assertCounts(breaker, 100, 5);
         assertThat(breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
@@ -58,13 +74,17 @@ class CircuitBreakerAdmissionMetricsTest {
             return backend;
         });
         List<CompletionStage<String>> results = new ArrayList<>();
-        for (int i = 0; i < 100; i++) results.add(decorated.get());
+        for (int i = 0; i < 100; i++) {
+            results.add(decorated.get());
+        }
 
         assertThat(backendCalls).hasSize(5);
         assertThat(backendCalls).allSatisfy(call -> assertThat(call.isDone()).isFalse());
         assertCounts(breaker, 100, 5);
         assertThat(breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
-        assertThat(results.stream().filter(result -> result.toCompletableFuture().isCompletedExceptionally()).count())
+        assertThat(results.stream()
+            .filter(result -> result.toCompletableFuture().isCompletedExceptionally())
+            .count())
             .isEqualTo(95);
 
         backendCalls.get(0).complete("ok");
@@ -72,6 +92,7 @@ class CircuitBreakerAdmissionMetricsTest {
         backendCalls.get(2).completeExceptionally(new IgnoredFailure());
         backendCalls.get(3).cancel(false);
         backendCalls.get(4).complete("ok");
+
         assertCounts(breaker, 100, 5);
     }
 
@@ -82,9 +103,11 @@ class CircuitBreakerAdmissionMetricsTest {
             .halfOpenRecoveryConfig(HalfOpenRecoveryConfig.custom().build()).build());
         breaker.acquirePermission();
         breaker.releasePermission();
+
         assertCounts(breaker, 1, 1);
         assertThat(breaker.tryAcquirePermission()).isTrue();
         breaker.onError(0, TimeUnit.NANOSECONDS, new IgnoredFailure());
+
         assertCounts(breaker, 2, 2);
         assertThat(breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
     }
@@ -93,9 +116,12 @@ class CircuitBreakerAdmissionMetricsTest {
     void throwingOutcomePredicateStillDoesNotUndoAnAdmission() {
         IllegalStateException predicateFailure = new IllegalStateException("broken predicate");
         CircuitBreaker breaker = CircuitBreaker.of("predicate", CircuitBreakerConfig.custom()
-            .recordException(error -> { throw predicateFailure; })
+            .recordException(error -> {
+                throw predicateFailure;
+            })
             .halfOpenRecoveryConfig(HalfOpenRecoveryConfig.custom().build()).build());
         breaker.acquirePermission();
+
         assertThatThrownBy(() -> breaker.onError(0, TimeUnit.NANOSECONDS, new RuntimeException("backend")))
             .isSameAs(predicateFailure);
         assertCounts(breaker, 1, 1);
@@ -108,6 +134,7 @@ class CircuitBreakerAdmissionMetricsTest {
             CircuitBreaker breaker = breaker(clock, 5);
             breaker.transitionToOpenState();
             clock.advance(Duration.ofSeconds(2));
+
             assertThat(permission(breaker, throwingApi)).isTrue();
             assertThat(breaker.getState()).isEqualTo(HALF_OPEN);
             assertCounts(breaker, 1, 1);
@@ -124,6 +151,7 @@ class CircuitBreakerAdmissionMetricsTest {
             breaker.reset();
             breaker.acquirePermission();
         });
+
         assertThat(breaker.tryAcquirePermission()).isFalse();
         assertThat(observed.get()).isNotNull();
         assertThat(observed.get().getNumberOfAttempts()).isEqualTo(1);
@@ -137,36 +165,45 @@ class CircuitBreakerAdmissionMetricsTest {
         CircuitBreaker breaker = CircuitBreaker.of("ordinary", CircuitBreakerConfig.custom()
             .clock(new ControlledClock()).permittedNumberOfCallsInHalfOpenState(2).build());
         breaker.acquirePermission();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertCounts(breaker, 0, 0);
         breaker.transitionToOpenState();
+
         assertThat(breaker.tryAcquirePermission()).isFalse();
         assertThatThrownBy(breaker::acquirePermission).isInstanceOf(CallNotPermittedException.class);
         breaker.transitionToHalfOpenState();
+
         assertThat(permission(breaker, true)).isTrue();
         assertThat(permission(breaker, false)).isTrue();
         assertThat(permission(breaker, true)).isFalse();
         assertThat(permission(breaker, false)).isFalse();
         assertCounts(breaker, 0, 0);
         breaker.releasePermission();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertThat(breaker.tryAcquirePermission()).isFalse();
         assertCounts(breaker, 0, 0);
 
         breaker.transitionToDisabledState();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         breaker.acquirePermission();
+
         assertCounts(breaker, 0, 0);
         breaker.transitionToMetricsOnlyState();
         breaker.acquirePermission();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertCounts(breaker, 0, 0);
         breaker.transitionToForcedOpenState();
+
         assertThat(breaker.tryAcquirePermission()).isFalse();
         assertThatThrownBy(breaker::acquirePermission).isInstanceOf(CallNotPermittedException.class);
         assertCounts(breaker, 0, 0);
         breaker.reset();
         breaker.acquirePermission();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertCounts(breaker, 0, 0);
         assertThat(breaker.getHalfOpenPhase().isActive()).isFalse();
@@ -176,22 +213,28 @@ class CircuitBreakerAdmissionMetricsTest {
     void enabledCountersSpanAdministrativeStatesWithoutRelyingOnEventsAndSurviveReset() {
         CircuitBreaker breaker = breaker(new ControlledClock(), 5);
         breaker.acquirePermission();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertCounts(breaker, 2, 2);
         breaker.transitionToDisabledState();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         breaker.acquirePermission();
+
         assertCounts(breaker, 4, 4);
         breaker.transitionToMetricsOnlyState();
         breaker.acquirePermission();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertCounts(breaker, 6, 6);
         breaker.transitionToForcedOpenState();
+
         assertThat(breaker.tryAcquirePermission()).isFalse();
         assertThatThrownBy(breaker::acquirePermission).isInstanceOf(CallNotPermittedException.class);
         assertCounts(breaker, 8, 6);
         breaker.reset();
         breaker.acquirePermission();
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertCounts(breaker, 10, 8);
     }
@@ -201,27 +244,34 @@ class CircuitBreakerAdmissionMetricsTest {
         ControlledClock clock = new ControlledClock();
         CircuitBreaker breaker = CircuitBreaker.of("changing", CircuitBreakerConfig.custom().clock(clock)
             .halfOpenRecoveryConfig(HalfOpenRecoveryConfig.custom().initialTrafficPercentage(25)
-                .trafficPercentageStep(25).minimumNumberOfCalls(2).minimumPhaseDuration(Duration.ofSeconds(10))
+                .trafficPercentageStep(25)
+                .minimumNumberOfCalls(2)
+                .minimumPhaseDuration(Duration.ofSeconds(10))
                 .failureStrategy(HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK).build()).build());
         enterRecovery(breaker);
         acquireAdmitted(breaker);
         breaker.onSuccess(0, TimeUnit.NANOSECONDS);
         acquireAdmitted(breaker);
         breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+
         assertCounts(breaker, 5, 2);
         clock.advance(Duration.ofSeconds(10));
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(50);
         assertCounts(breaker, 6, 3);
         breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
         acquireAdmitted(breaker);
         breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
+
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(25);
         assertCounts(breaker, 8, 4);
         AdmissionMetrics previous = breaker.getAdmissionMetrics();
         breaker.reset();
+
         assertCounts(breaker, 8, 4);
         breaker.acquirePermission();
+
         assertCounts(breaker, 9, 5);
         assertThat(previous.getNumberOfAttempts()).isEqualTo(8);
         assertThat(previous.getNumberOfPermittedAttempts()).isEqualTo(4);
@@ -235,6 +285,7 @@ class CircuitBreakerAdmissionMetricsTest {
             breaker.transitionToOpenState();
             IllegalStateException failure = new IllegalStateException("clock unavailable");
             clock.nextFailure.set(failure);
+
             assertThatThrownBy(() -> permission(breaker, throwingApi)).isSameAs(failure);
             assertCounts(breaker, 1, 0);
         }
@@ -254,9 +305,11 @@ class CircuitBreakerAdmissionMetricsTest {
                 breaker.acquirePermission();
                 return true;
             });
+
             assertThat(pending.entered.await(10, TimeUnit.SECONDS)).isTrue();
             assertCounts(breaker, 1, 0);
             pending.release.countDown();
+
             assertThat(permission.get(10, TimeUnit.SECONDS)).isTrue();
             assertCounts(breaker, 1, 1);
         } finally {
@@ -274,12 +327,16 @@ class CircuitBreakerAdmissionMetricsTest {
         AtomicBoolean reading = new AtomicBoolean(true);
         List<Future<Integer>> workers = new ArrayList<>();
         Future<Integer> reader = executor.submit(() -> {
-            if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("Start was not released");
+            if (!start.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("Start was not released");
+            }
             int snapshots = 0;
             try {
                 while (reading.get()) {
                     AdmissionMetrics snapshot = breaker.getAdmissionMetrics();
-                    assertThat(snapshot.getNumberOfPermittedAttempts()).isBetween(0L, snapshot.getNumberOfAttempts());
+
+                    assertThat(snapshot.getNumberOfPermittedAttempts())
+                        .isBetween(0L, snapshot.getNumberOfAttempts());
                     snapshots++;
                     firstRead.countDown();
                 }
@@ -291,19 +348,25 @@ class CircuitBreakerAdmissionMetricsTest {
         try {
             for (int thread = 0; thread < 8; thread++) {
                 workers.add(executor.submit(() -> {
-                    if (!start.await(10, TimeUnit.SECONDS) || !firstRead.await(10, TimeUnit.SECONDS))
+                    if (!start.await(10, TimeUnit.SECONDS) || !firstRead.await(10, TimeUnit.SECONDS)) {
                         throw new AssertionError("Workers were not released");
+                    }
                     int permitted = 0;
                     for (int i = 0; i < 1000; i++) {
-                        if (permission(breaker, i % 2 == 0)) permitted++;
+                        if (permission(breaker, i % 2 == 0)) {
+                            permitted++;
+                        }
                     }
                     return permitted;
                 }));
             }
             start.countDown();
             int permitted = 0;
-            for (Future<Integer> worker : workers) permitted += worker.get(10, TimeUnit.SECONDS);
+            for (Future<Integer> worker : workers) {
+                permitted += worker.get(10, TimeUnit.SECONDS);
+            }
             reading.set(false);
+
             assertThat(reader.get(10, TimeUnit.SECONDS)).isPositive();
             assertThat(permitted).isEqualTo(2960);
             assertCounts(breaker, 8000, 2960);
@@ -318,6 +381,7 @@ class CircuitBreakerAdmissionMetricsTest {
     @Test
     void externalImplementationsHaveAnEmptyCompatibleDefaultAndSnapshotsRejectInvalidCounts() {
         CircuitBreaker external = mock(CircuitBreaker.class, CALLS_REAL_METHODS);
+
         assertCounts(external, 0, 0);
         long[][] invalid = {{-1, 0}, {1, -1}, {1, 2}};
         for (long[] counts : invalid) {
@@ -345,7 +409,9 @@ class CircuitBreakerAdmissionMetricsTest {
     }
 
     private static boolean permission(CircuitBreaker breaker, boolean throwing) {
-        if (!throwing) return breaker.tryAcquirePermission();
+        if (!throwing) {
+            return breaker.tryAcquirePermission();
+        }
         try {
             breaker.acquirePermission();
             return true;
@@ -356,18 +422,22 @@ class CircuitBreakerAdmissionMetricsTest {
 
     private static void acquireAdmitted(CircuitBreaker breaker) {
         for (int attempt = 0; attempt < 100; attempt++) {
-            if (breaker.tryAcquirePermission()) return;
+            if (breaker.tryAcquirePermission()) {
+                return;
+            }
         }
         throw new AssertionError("Positive recovery percentage must admit within 100 offers");
     }
 
     private static void assertCounts(CircuitBreaker breaker, long attempts, long permitted) {
         AdmissionMetrics snapshot = breaker.getAdmissionMetrics();
+
         assertThat(snapshot.getNumberOfAttempts()).isEqualTo(attempts);
         assertThat(snapshot.getNumberOfPermittedAttempts()).isEqualTo(permitted);
     }
 
-    private static final class IgnoredFailure extends RuntimeException { }
+    private static final class IgnoredFailure extends RuntimeException {
+    }
 
     private static final class PendingGate {
         final CountDownLatch entered = new CountDownLatch(1);
@@ -393,19 +463,33 @@ class CircuitBreakerAdmissionMetricsTest {
             this.nextBlock = nextBlock;
         }
 
-        void advance(Duration duration) { now.updateAndGet(instant -> instant.plus(duration)); }
-        @Override public ZoneId getZone() { return zone; }
-        @Override public Clock withZone(ZoneId zone) { return new ControlledClock(now, zone, nextFailure, nextBlock); }
+        void advance(Duration duration) {
+            now.updateAndGet(instant -> instant.plus(duration));
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return new ControlledClock(now, zone, nextFailure, nextBlock);
+        }
 
         @Override
         public Instant instant() {
             RuntimeException failure = nextFailure.getAndSet(null);
-            if (failure != null) throw failure;
+            if (failure != null) {
+                throw failure;
+            }
             PendingGate pending = nextBlock.getAndSet(null);
             if (pending != null) {
                 pending.entered.countDown();
                 try {
-                    if (!pending.release.await(10, TimeUnit.SECONDS)) throw new AssertionError("Gate was not released");
+                    if (!pending.release.await(10, TimeUnit.SECONDS)) {
+                        throw new AssertionError("Gate was not released");
+                    }
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw new AssertionError(interrupted);

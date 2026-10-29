@@ -358,8 +358,10 @@ public class CircuitBreakerConfig implements Serializable {
         private int permittedNumberOfCallsInHalfOpenState = DEFAULT_PERMITTED_CALLS_IN_HALF_OPEN_STATE;
         private int slidingWindowSize = DEFAULT_SLIDING_WINDOW_SIZE;
         private Predicate<Object> recordResultPredicate = DEFAULT_RECORD_RESULT_PREDICATE;
+
         @Nullable
         private HalfOpenRecoveryConfig halfOpenRecoveryConfig;
+
         private IntervalFunction waitIntervalFunctionInOpenState = IntervalFunction
             .of(Duration.ofSeconds(DEFAULT_WAIT_DURATION_IN_OPEN_STATE));
 

@@ -1,19 +1,30 @@
 /*
- * Copyright 2026 authors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *  Copyright 2026 authors
  *
- *        http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.metrics;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import com.codahale.metrics.MetricRegistry;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -24,14 +35,6 @@ import io.github.resilience4j.metrics.publisher.CircuitBreakerMetricsPublisher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -70,6 +73,7 @@ class PhasedCircuitBreakerMetricsTest {
         assertGauge(meters, "state", 2);
         assertGauge(meters, "recovery.phase", 2);
         assertGauge(meters, "recovery.traffic.percentage", 100);
+
         assertThat(meters.getNames()).containsExactlyInAnyOrderElementsOf(names);
 
         breaker.reset();
@@ -109,6 +113,7 @@ class PhasedCircuitBreakerMetricsTest {
         assertGauge(meters, "recovery.traffic.percentage", 50);
 
         CircuitBreaker ordinaryReplacement = CircuitBreaker.ofDefaults(NAME);
+
         assertThat(registry.replace(NAME, ordinaryReplacement)).contains(original);
         assertThat(meters.getMetrics()).hasSize(10);
         assertThat(meters.getNames()).noneMatch(name -> name.contains(".recovery."));
@@ -116,12 +121,14 @@ class PhasedCircuitBreakerMetricsTest {
 
         CircuitBreaker phasedReplacement = CircuitBreaker.of(NAME, phasedConfig(clock));
         registry.replace(NAME, phasedReplacement);
+
         assertThat(meters.getMetrics()).hasSize(14);
         assertGauge(meters, "recovery.phase", 0);
         phasedReplacement.transitionToOpenState();
         phasedReplacement.transitionToHalfOpenState();
         assertGauge(meters, "recovery.traffic.percentage", 50);
         registry.remove(NAME);
+
         assertThat(meters.getMetrics()).isEmpty();
     }
 
@@ -150,6 +157,7 @@ class PhasedCircuitBreakerMetricsTest {
                 completed++;
             }
         }
+
         assertThat(completed).isEqualTo(expected);
     }
 

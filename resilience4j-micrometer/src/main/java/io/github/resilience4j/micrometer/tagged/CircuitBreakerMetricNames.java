@@ -17,16 +17,31 @@ public class CircuitBreakerMetricNames {
         DEFAULT_PREFIX + ".failure.rate";
     public static final String DEFAULT_CIRCUIT_BREAKER_SLOW_CALL_RATE =
         DEFAULT_PREFIX + ".slow.call.rate";
-    /** Default name for the current phased HALF_OPEN recovery phase gauge. */
+
+    /**
+     * Default name for the current phased HALF_OPEN recovery phase gauge.
+     */
     public static final String DEFAULT_CIRCUIT_BREAKER_RECOVERY_PHASE =
         DEFAULT_PREFIX + ".recovery.phase";
-    /** Default name for the current recovery admission target percentage gauge. */
+
+    /**
+     * Default name for the current recovery admission target percentage gauge.
+     */
     public static final String DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE =
         DEFAULT_PREFIX + ".recovery.traffic.percentage";
-    /** Default name for the cumulative count of public permission requests. */
-    public static final String DEFAULT_CIRCUIT_BREAKER_ATTEMPTS = DEFAULT_PREFIX + ".admission.attempts";
-    /** Default name for the cumulative count of requests granted permission. */
-    public static final String DEFAULT_CIRCUIT_BREAKER_PERMITTED_ATTEMPTS = DEFAULT_PREFIX + ".admission.permitted.attempts";
+
+    /**
+     * Default name for the cumulative count of public permission requests.
+     */
+    public static final String DEFAULT_CIRCUIT_BREAKER_ATTEMPTS =
+        DEFAULT_PREFIX + ".admission.attempts";
+
+    /**
+     * Default name for the cumulative count of requests granted permission.
+     */
+    public static final String DEFAULT_CIRCUIT_BREAKER_PERMITTED_ATTEMPTS =
+        DEFAULT_PREFIX + ".admission.permitted.attempts";
+
     private String attemptsMetricName = DEFAULT_CIRCUIT_BREAKER_ATTEMPTS;
     private String permittedAttemptsMetricName = DEFAULT_CIRCUIT_BREAKER_PERMITTED_ATTEMPTS;
     private String callsMetricName = DEFAULT_CIRCUIT_BREAKER_CALLS;
@@ -37,7 +52,8 @@ public class CircuitBreakerMetricNames {
     private String failureRateMetricName = DEFAULT_CIRCUIT_BREAKER_FAILURE_RATE;
     private String slowCallRateMetricName = DEFAULT_CIRCUIT_BREAKER_SLOW_CALL_RATE;
     private String recoveryPhaseMetricName = DEFAULT_CIRCUIT_BREAKER_RECOVERY_PHASE;
-    private String recoveryTrafficPercentageMetricName = DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE;
+    private String recoveryTrafficPercentageMetricName =
+        DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE;
 
     protected CircuitBreakerMetricNames() {
     }
@@ -276,8 +292,10 @@ public class CircuitBreakerMetricNames {
          * @return this builder
          * @throws NullPointerException if the metric name is null
          */
-        public Builder recoveryTrafficPercentageMetricName(String recoveryTrafficPercentageMetricName) {
-            metricNames.recoveryTrafficPercentageMetricName = requireNonNull(recoveryTrafficPercentageMetricName);
+        public Builder recoveryTrafficPercentageMetricName(
+            String recoveryTrafficPercentageMetricName) {
+            metricNames.recoveryTrafficPercentageMetricName =
+                requireNonNull(recoveryTrafficPercentageMetricName);
             return this;
         }
 

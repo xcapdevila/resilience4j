@@ -1,17 +1,20 @@
 /*
- * Copyright 2026 Resilience4j Authors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *  Copyright 2026 authors
  *
- *        https://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.circuitbreaker;
 
@@ -56,7 +59,10 @@ public final class HalfOpenRecoveryConfig implements Serializable {
      *
      * @return a new builder
      */
-    public static Builder custom() { return new Builder(); }
+    public static Builder custom() {
+        return new Builder();
+    }
+
     /**
      * Copies a policy, retaining whether the initial percentage was automatic or explicit.
      *
@@ -82,14 +88,18 @@ public final class HalfOpenRecoveryConfig implements Serializable {
      *
      * @return true when the configured initial percentage is zero
      */
-    public boolean isInitialTrafficPercentageAutomatic() { return initialTrafficPercentage == 0; }
+    public boolean isInitialTrafficPercentageAutomatic() {
+        return initialTrafficPercentage == 0;
+    }
 
     /**
      * Returns the increment in percentage points between recovery phases.
      *
      * @return the configured step from 1 to 100
      */
-    public int getTrafficPercentageStep() { return trafficPercentageStep; }
+    public int getTrafficPercentageStep() {
+        return trafficPercentageStep;
+    }
 
     /**
      * Returns the minimum time a healthy phase must remain active before advancing.
@@ -97,7 +107,9 @@ public final class HalfOpenRecoveryConfig implements Serializable {
      *
      * @return the positive minimum phase duration
      */
-    public Duration getMinimumPhaseDuration() { return minimumPhaseDuration; }
+    public Duration getMinimumPhaseDuration() {
+        return minimumPhaseDuration;
+    }
 
     /**
      * Returns the number of recorded completions in each phase's rolling health window.
@@ -105,14 +117,18 @@ public final class HalfOpenRecoveryConfig implements Serializable {
      *
      * @return the positive number of samples required for evaluation
      */
-    public int getMinimumNumberOfCalls() { return minimumNumberOfCalls; }
+    public int getMinimumNumberOfCalls() {
+        return minimumNumberOfCalls;
+    }
 
     /**
      * Returns the response to an unhealthy phase evaluation.
      *
      * @return the configured failure strategy
      */
-    public FailureStrategy getFailureStrategy() { return failureStrategy; }
+    public FailureStrategy getFailureStrategy() {
+        return failureStrategy;
+    }
 
     /** Builds an immutable percentage-based HALF_OPEN recovery policy. */
     public static final class Builder {
@@ -122,7 +138,9 @@ public final class HalfOpenRecoveryConfig implements Serializable {
         private int minimumNumberOfCalls = 10;
         private FailureStrategy failureStrategy = FailureStrategy.OPEN;
 
-        private Builder() { }
+        private Builder() {
+        }
+
         private Builder(HalfOpenRecoveryConfig base) {
             initialTrafficPercentage = base.initialTrafficPercentage;
             trafficPercentageStep = base.trafficPercentageStep;
@@ -217,7 +235,9 @@ public final class HalfOpenRecoveryConfig implements Serializable {
          *
          * @return the configured recovery policy
          */
-        public HalfOpenRecoveryConfig build() { return new HalfOpenRecoveryConfig(this); }
+        public HalfOpenRecoveryConfig build() {
+            return new HalfOpenRecoveryConfig(this);
+        }
 
         private static void checkPercentage(int percentage, String name, int minimum) {
             if (percentage < minimum || percentage > 100) {

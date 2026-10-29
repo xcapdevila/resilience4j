@@ -38,7 +38,8 @@ import java.util.stream.Collectors;
  * A CircuitBreaker instance is thread-safe can be used to decorate multiple requests.
  * <p>
  * A {@link CircuitBreaker} manages the state of a backend system. The CircuitBreaker is implemented
- * via a finite state machine with six states: CLOSED, OPEN, HALF_OPEN, DISABLED, FORCED_OPEN and METRICS_ONLY.
+ * via a finite state machine with six states: CLOSED, OPEN, HALF_OPEN, DISABLED, FORCED_OPEN
+ * and METRICS_ONLY.
  * The CircuitBreaker does not know anything about the backend's state by itself, but uses the
  * information provided by the decorators via {@link CircuitBreaker#onSuccess} and {@link
  * CircuitBreaker#onError} events. Before communicating with the backend, the permission to do so

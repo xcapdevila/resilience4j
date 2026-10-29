@@ -19,6 +19,7 @@ package io.github.resilience4j.commons.configuration.circuitbreaker.configure;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
+import io.github.resilience4j.common.CompositeCustomizer;
 import io.github.resilience4j.common.circuitbreaker.configuration.CommonCircuitBreakerConfigurationProperties;
 import io.github.resilience4j.commons.configuration.dummy.DummyIgnoredException;
 import io.github.resilience4j.commons.configuration.dummy.DummyPredicateThrowable;
@@ -31,9 +32,8 @@ import org.apache.commons.configuration2.YAMLConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
-import java.util.Map;
 import java.util.Collections;
-import io.github.resilience4j.common.CompositeCustomizer;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,11 +53,15 @@ class CommonsConfigurationCircuitBreakerConfigurationTest {
             "resilience4j.circuitbreaker.instances.reset.halfOpenRecovery.initialTrafficPercentage", 0,
             "resilience4j.circuitbreaker.instances.reset.halfOpenRecovery.trafficPercentageStep", 45));
         var properties = CommonsConfigurationCircuitBreakerConfiguration.of(source);
-        var customizers = new CompositeCustomizer<io.github.resilience4j.common.circuitbreaker.configuration.CircuitBreakerConfigCustomizer>(Collections.emptyList());
+        var customizers = new CompositeCustomizer<
+            io.github.resilience4j.common.circuitbreaker.configuration.CircuitBreakerConfigCustomizer>(
+            Collections.emptyList());
 
-        var automatic = properties.createCircuitBreakerConfig("automatic", properties.getInstances().get("automatic"), customizers)
+        var automatic = properties.createCircuitBreakerConfig("automatic",
+            properties.getInstances().get("automatic"), customizers)
             .getHalfOpenRecoveryConfig();
-        var reset = properties.createCircuitBreakerConfig("reset", properties.getInstances().get("reset"), customizers)
+        var reset = properties.createCircuitBreakerConfig("reset",
+            properties.getInstances().get("reset"), customizers)
             .getHalfOpenRecoveryConfig();
 
         assertThat(automatic.isInitialTrafficPercentageAutomatic()).isTrue();
@@ -72,9 +76,12 @@ class CommonsConfigurationCircuitBreakerConfigurationTest {
             "resilience4j.circuitbreaker.instances.invalid.halfOpenRecovery.enabled", true,
             "resilience4j.circuitbreaker.instances.invalid.halfOpenRecovery.trafficPercentageStep", 120));
         var properties = CommonsConfigurationCircuitBreakerConfiguration.of(source);
-        var customizers = new CompositeCustomizer<io.github.resilience4j.common.circuitbreaker.configuration.CircuitBreakerConfigCustomizer>(Collections.emptyList());
+        var customizers = new CompositeCustomizer<
+            io.github.resilience4j.common.circuitbreaker.configuration.CircuitBreakerConfigCustomizer>(
+            Collections.emptyList());
 
-        assertThatThrownBy(() -> properties.createCircuitBreakerConfig("invalid", properties.getInstances().get("invalid"), customizers))
+        assertThatThrownBy(() -> properties.createCircuitBreakerConfig("invalid",
+            properties.getInstances().get("invalid"), customizers))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("trafficPercentageStep must be between 1 and 100");
     }
@@ -91,10 +98,14 @@ class CommonsConfigurationCircuitBreakerConfigurationTest {
             "resilience4j.circuitbreaker.instances.disabled.baseConfig", "shared",
             "resilience4j.circuitbreaker.instances.disabled.halfOpenRecovery.enabled", false));
         var properties = CommonsConfigurationCircuitBreakerConfiguration.of(source);
-        var customizers = new CompositeCustomizer<io.github.resilience4j.common.circuitbreaker.configuration.CircuitBreakerConfigCustomizer>(Collections.emptyList());
+        var customizers = new CompositeCustomizer<
+            io.github.resilience4j.common.circuitbreaker.configuration.CircuitBreakerConfigCustomizer>(
+            Collections.emptyList());
 
-        var config = properties.createCircuitBreakerConfig("override", properties.getInstances().get("override"), customizers);
-        var disabled = properties.createCircuitBreakerConfig("disabled", properties.getInstances().get("disabled"), customizers);
+        var config = properties.createCircuitBreakerConfig("override",
+            properties.getInstances().get("override"), customizers);
+        var disabled = properties.createCircuitBreakerConfig("disabled",
+            properties.getInstances().get("disabled"), customizers);
 
         assertThat(config.getHalfOpenRecoveryConfig().getInitialTrafficPercentage()).isEqualTo(5);
         assertThat(config.getHalfOpenRecoveryConfig().getTrafficPercentageStep()).isEqualTo(10);

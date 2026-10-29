@@ -1,9 +1,30 @@
 /*
- * Copyright 2026 Resilience4j Authors
- * Licensed under the Apache License, Version 2.0 (the "License");
- * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Copyright 2026 authors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.metrics;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import com.codahale.metrics.MetricRegistry;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -15,14 +36,6 @@ import io.github.resilience4j.metrics.publisher.CircuitBreakerMetricsPublisher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -39,7 +52,9 @@ class AdmissionCircuitBreakerMetricsTest {
         MetricRegistry meters = new MetricRegistry();
         CircuitBreakerRegistry registry = registry(meters, publisher);
         CircuitBreaker breaker = registry.circuitBreaker(NAME, config(new MutableClock(), 20, 10));
-        if (!publisher) meters.registerAll(CircuitBreakerMetrics.ofCircuitBreakerRegistry(PREFIX, registry));
+        if (!publisher) {
+            meters.registerAll(CircuitBreakerMetrics.ofCircuitBreakerRegistry(PREFIX, registry));
+        }
         enterRecovery(breaker);
 
         offerMixedAttempts(breaker, 100);
@@ -50,8 +65,10 @@ class AdmissionCircuitBreakerMetricsTest {
         breaker.onError(1, TimeUnit.MILLISECONDS, new IllegalStateException("failed"));
         breaker.onError(1, TimeUnit.MILLISECONDS, new IllegalArgumentException("ignored"));
         breaker.releasePermission();
+
         assertCounts(meters, 100, 20);
-        assertThat(meters.getGauges().get(PREFIX + "." + NAME + ".recovery.traffic.percentage").getValue()).isEqualTo(20);
+        assertThat(meters.getGauges().get(PREFIX + "." + NAME + ".recovery.traffic.percentage").getValue())
+            .isEqualTo(20);
         assertThat(meters.getMetrics()).hasSize(14);
     }
 
@@ -69,8 +86,10 @@ class AdmissionCircuitBreakerMetricsTest {
         } else {
             meters.registerAll(CircuitBreakerMetrics.ofCircuitBreakerRegistry(PREFIX, registry));
         }
+
         assertCounts(meters, 30, 30);
         offerMixedAttempts(breaker, 10);
+
         assertCounts(meters, 40, 40);
     }
 
@@ -81,21 +100,29 @@ class AdmissionCircuitBreakerMetricsTest {
         CircuitBreakerRegistry registry = registry(meters, publisher);
         MutableClock clock = new MutableClock();
         CircuitBreaker breaker = registry.circuitBreaker(NAME, config(clock, 50, 2));
-        if (!publisher) meters.registerAll(CircuitBreakerMetrics.ofCircuitBreakerRegistry(PREFIX, registry));
+        if (!publisher) {
+            meters.registerAll(CircuitBreakerMetrics.ofCircuitBreakerRegistry(PREFIX, registry));
+        }
         Set<String> metricNames = Set.copyOf(meters.getNames());
         enterRecovery(breaker);
         for (int i = 0; i < 3; i++) {
-            if (breaker.tryAcquirePermission()) breaker.onSuccess(1, TimeUnit.MILLISECONDS);
+            if (breaker.tryAcquirePermission()) {
+                breaker.onSuccess(1, TimeUnit.MILLISECONDS);
+            }
         }
+
         assertCounts(meters, 3, 2);
         clock.advance(Duration.ofSeconds(10));
+
         assertThat(breaker.tryAcquirePermission()).isTrue();
         assertCounts(meters, 4, 3);
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(100);
         breaker.reset();
+
         assertCounts(meters, 4, 3);
         breaker.acquirePermission();
         breaker.transitionToOpenState();
+
         assertThat(breaker.tryAcquirePermission()).isFalse();
         assertCounts(meters, 6, 4);
         assertThat(meters.getNames()).containsExactlyInAnyOrderElementsOf(metricNames);
@@ -107,15 +134,20 @@ class AdmissionCircuitBreakerMetricsTest {
         CircuitBreakerRegistry registry = registry(meters, true);
         CircuitBreaker original = registry.circuitBreaker(NAME, config(new MutableClock(), 20, 10));
         offerMixedAttempts(original, 100);
+
         assertCounts(meters, 100, 100);
         CircuitBreaker replacement = CircuitBreaker.of(NAME, config(new MutableClock(), 20, 10));
         registry.replace(NAME, replacement);
+
         assertCounts(meters, 0, 0);
         replacement.acquirePermission();
+
         assertCounts(meters, 1, 1);
         registry.remove(NAME);
+
         assertThat(meters.getMetrics()).isEmpty();
         registry.circuitBreaker(NAME);
+
         assertThat(meters.getMetrics()).hasSize(10);
         assertThat(meters.getCounters()).doesNotContainKeys(ATTEMPTS, PERMITTED);
     }
@@ -125,8 +157,11 @@ class AdmissionCircuitBreakerMetricsTest {
         MetricRegistry meters = new MetricRegistry();
         CircuitBreakerRegistry registry = registry(meters, true);
         registry.circuitBreaker(NAME, config(new MutableClock(), 20, 10));
-        assertThatThrownBy(() -> meters.getCounters().get(ATTEMPTS).inc()).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> meters.getCounters().get(PERMITTED).dec(10)).isInstanceOf(UnsupportedOperationException.class);
+
+        assertThatThrownBy(() -> meters.getCounters().get(ATTEMPTS).inc())
+            .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> meters.getCounters().get(PERMITTED).dec(10))
+            .isInstanceOf(UnsupportedOperationException.class);
         assertCounts(meters, 0, 0);
     }
 
@@ -168,9 +203,23 @@ class AdmissionCircuitBreakerMetricsTest {
 
     private static final class MutableClock extends Clock {
         private Instant now = Instant.parse("2026-01-01T00:00:00Z");
-        void advance(Duration duration) { now = now.plus(duration); }
-        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
-        @Override public Clock withZone(ZoneId zone) { return Clock.fixed(now, zone); }
-        @Override public Instant instant() { return now; }
+        void advance(Duration duration) {
+            now = now.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return Clock.fixed(now, zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
     }
 }

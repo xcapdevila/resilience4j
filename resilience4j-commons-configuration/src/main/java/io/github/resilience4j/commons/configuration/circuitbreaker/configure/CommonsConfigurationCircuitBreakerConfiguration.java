@@ -17,8 +17,8 @@
 package io.github.resilience4j.commons.configuration.circuitbreaker.configure;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
 import io.github.resilience4j.common.circuitbreaker.configuration.CommonCircuitBreakerConfigurationProperties;
 import io.github.resilience4j.common.circuitbreaker.configuration.HalfOpenRecoveryProperties;
 import io.github.resilience4j.commons.configuration.exception.ConfigParseException;
@@ -159,15 +159,20 @@ public class CommonsConfigurationCircuitBreakerConfiguration extends CommonCircu
             if (recoveryConfiguration.containsKey("enabled"))
                 recovery.setEnabled(recoveryConfiguration.getBoolean("enabled"));
             if (recoveryConfiguration.containsKey("initialTrafficPercentage"))
-                recovery.setInitialTrafficPercentage(recoveryConfiguration.getInt("initialTrafficPercentage"));
+                recovery.setInitialTrafficPercentage(
+                    recoveryConfiguration.getInt("initialTrafficPercentage"));
             if (recoveryConfiguration.containsKey("trafficPercentageStep"))
-                recovery.setTrafficPercentageStep(recoveryConfiguration.getInt("trafficPercentageStep"));
+                recovery.setTrafficPercentageStep(
+                    recoveryConfiguration.getInt("trafficPercentageStep"));
             if (recoveryConfiguration.containsKey("minimumPhaseDuration"))
-                recovery.setMinimumPhaseDuration(recoveryConfiguration.getDuration("minimumPhaseDuration"));
+                recovery.setMinimumPhaseDuration(
+                    recoveryConfiguration.getDuration("minimumPhaseDuration"));
             if (recoveryConfiguration.containsKey("minimumNumberOfCalls"))
-                recovery.setMinimumNumberOfCalls(recoveryConfiguration.getInt("minimumNumberOfCalls"));
+                recovery.setMinimumNumberOfCalls(
+                    recoveryConfiguration.getInt("minimumNumberOfCalls"));
             if (recoveryConfiguration.containsKey("failureStrategy"))
-                recovery.setFailureStrategy(recoveryConfiguration.getEnum("failureStrategy", HalfOpenRecoveryConfig.FailureStrategy.class));
+                recovery.setFailureStrategy(recoveryConfiguration.getEnum("failureStrategy",
+                    HalfOpenRecoveryConfig.FailureStrategy.class));
             instanceProperties.setHalfOpenRecovery(recovery);
         }
 

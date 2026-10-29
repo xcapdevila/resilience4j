@@ -1,19 +1,34 @@
 /*
- * Copyright 2026 authors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *  Copyright 2026 authors
  *
- *        http://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.micrometer.tagged;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -28,18 +43,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-
 import static io.github.resilience4j.micrometer.tagged.CircuitBreakerMetricNames.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,7 +56,8 @@ class PhasedCircuitBreakerMetricsTest {
         MutableClock clock = new MutableClock();
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
-            CircuitBreakerRegistry registry = registry(meters, publisher, CircuitBreakerMetricNames.ofDefaults());
+            CircuitBreakerRegistry registry = registry(meters, publisher,
+                CircuitBreakerMetricNames.ofDefaults());
             CircuitBreaker breaker = registry.circuitBreaker(NAME, phasedConfig(clock, 5));
             Set<Meter.Id> ids = ids(meters);
 
@@ -61,10 +65,12 @@ class PhasedCircuitBreakerMetricsTest {
             assertRecovery(meters, 0, 0);
             breaker.transitionToOpenState();
             breaker.transitionToHalfOpenState();
+
             assertRecovery(meters, 1, 5);
             assertHalfOpen(meters);
 
             completeAcceptedCalls(breaker, 10, false);
+
             assertRecovery(meters, 1, 5);
             assertThat(successCount(meters)).isEqualTo(10);
             clock.advance(Duration.ofSeconds(10));
@@ -98,10 +104,12 @@ class PhasedCircuitBreakerMetricsTest {
                 assertThat(breaker.tryAcquirePermission()).as("Admission %s at 100%%", i).isTrue();
                 breaker.onSuccess(5, TimeUnit.MILLISECONDS);
             }
+
             assertRecovery(meters, 1, 100);
             assertHalfOpen(meters);
             assertThat(successCount(meters)).isEqualTo(1000);
             clock.advance(Duration.ofSeconds(10));
+
             assertThat(breaker.tryAcquirePermission()).isTrue();
             breaker.onSuccess(5, TimeUnit.MILLISECONDS);
 
@@ -129,8 +137,10 @@ class PhasedCircuitBreakerMetricsTest {
                     breaker.onSuccess(5, TimeUnit.MILLISECONDS);
                 }
             }
+
             assertThat(admitted).isEqualTo(percentage);
         }
+
         assertThat(breaker.getState()).isEqualTo(CircuitBreaker.State.HALF_OPEN);
     }
 
@@ -140,7 +150,8 @@ class PhasedCircuitBreakerMetricsTest {
         MutableClock clock = new MutableClock();
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
-            CircuitBreakerRegistry registry = registry(meters, publisher, CircuitBreakerMetricNames.ofDefaults());
+            CircuitBreakerRegistry registry = registry(meters, publisher,
+                CircuitBreakerMetricNames.ofDefaults());
             CircuitBreaker breaker = registry.circuitBreaker(NAME, phasedConfig(clock, 5));
             breaker.transitionToOpenState();
             breaker.transitionToHalfOpenState();
@@ -150,6 +161,7 @@ class PhasedCircuitBreakerMetricsTest {
             completeAcceptedCalls(breaker, 10, false);
             clock.advance(Duration.ofSeconds(10));
             completeAcceptedCalls(breaker, 1, false);
+
             assertRecovery(meters, 3, 15);
 
             clock.advance(Duration.ofSeconds(10));
@@ -171,7 +183,8 @@ class PhasedCircuitBreakerMetricsTest {
         MutableClock clock = new MutableClock();
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
-            CircuitBreakerRegistry registry = registry(meters, publisher, CircuitBreakerMetricNames.ofDefaults());
+            CircuitBreakerRegistry registry = registry(meters, publisher,
+                CircuitBreakerMetricNames.ofDefaults());
             CircuitBreaker breaker = registry.circuitBreaker(NAME, phasedConfig(clock, 5));
             breaker.transitionToOpenState();
             breaker.transitionToHalfOpenState();
@@ -193,7 +206,8 @@ class PhasedCircuitBreakerMetricsTest {
     void ordinaryBreakersKeepTheExistingMetricSet(boolean publisher) {
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
-            CircuitBreakerRegistry registry = registry(meters, publisher, CircuitBreakerMetricNames.ofDefaults());
+            CircuitBreakerRegistry registry = registry(meters, publisher,
+                CircuitBreakerMetricNames.ofDefaults());
             registry.circuitBreaker(NAME);
 
             assertThat(meters.getMeters()).hasSize(16);
@@ -201,7 +215,8 @@ class PhasedCircuitBreakerMetricsTest {
             assertThat(meters.find(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge()).isNull();
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_STATE).gauges()).extracting(
                 gauge -> gauge.getId().getTag("state"))
-                .containsExactlyInAnyOrder("closed", "open", "half_open", "disabled", "forced_open", "metrics_only");
+                .containsExactlyInAnyOrder("closed", "open", "half_open",
+                    "disabled", "forced_open", "metrics_only");
         } finally {
             meters.close();
         }
@@ -217,7 +232,8 @@ class PhasedCircuitBreakerMetricsTest {
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
             CircuitBreakerRegistry registry = registry(meters, publisher, names);
-            CircuitBreaker old = registry.circuitBreaker(NAME, phasedConfig(clock, 5), Map.of("region", "eu"));
+            CircuitBreaker old = registry.circuitBreaker(NAME,
+                phasedConfig(clock, 5), Map.of("region", "eu"));
             old.transitionToOpenState();
             old.transitionToHalfOpenState();
 
@@ -226,9 +242,12 @@ class PhasedCircuitBreakerMetricsTest {
             assertThat(meters.get("custom.recovery.traffic.percentage").tags("name", NAME, "region", "eu")
                 .gauge().value()).isEqualTo(5);
             registry.remove(NAME);
+
             assertThat(meters.getMeters()).isEmpty();
 
-            CircuitBreaker replacement = registry.circuitBreaker(NAME, phasedConfig(clock, 5), Map.of("region", "eu"));
+            CircuitBreaker replacement = registry.circuitBreaker(NAME,
+                phasedConfig(clock, 5), Map.of("region", "eu"));
+
             assertThat(replacement).isNotSameAs(old);
             assertThat(meters.get("custom.recovery.phase").gauge().value()).isZero();
             assertThat(meters.getMeters()).hasSize(20);
@@ -247,6 +266,7 @@ class PhasedCircuitBreakerMetricsTest {
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         try {
             TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(registry).bindTo(meters);
+
             assertRecovery(meters, 1, 5);
             assertHalfOpen(meters);
         } finally {
@@ -262,8 +282,10 @@ class PhasedCircuitBreakerMetricsTest {
         try {
             List<String> registrationFailures = new ArrayList<>();
             meters.config().onMeterRegistrationFailed((id, reason) -> registrationFailures.add(reason));
-            CircuitBreakerRegistry registry = registry(meters, publisher, CircuitBreakerMetricNames.ofDefaults());
-            CircuitBreaker breaker = registry.circuitBreaker(NAME, phasedConfig(clock, 5), Map.of("region", "eu"));
+            CircuitBreakerRegistry registry = registry(meters, publisher,
+                CircuitBreakerMetricNames.ofDefaults());
+            CircuitBreaker breaker = registry.circuitBreaker(NAME,
+                phasedConfig(clock, 5), Map.of("region", "eu"));
             breaker.transitionToOpenState();
             breaker.transitionToHalfOpenState();
 
@@ -274,9 +296,11 @@ class PhasedCircuitBreakerMetricsTest {
             completeAcceptedCalls(breaker, 10, false);
             clock.advance(Duration.ofSeconds(10));
             completeAcceptedCalls(breaker, 1, false);
+
             assertThat(meters.scrape()).contains(
                 "resilience4j_circuitbreaker_recovery_phase{name=\"phased\",region=\"eu\"} 2.0",
                 "resilience4j_circuitbreaker_recovery_traffic_percentage{name=\"phased\",region=\"eu\"} 10.0");
+
             assertThat(ids(meters)).containsExactlyInAnyOrderElementsOf(before);
             assertThat(registrationFailures).isEmpty();
         } finally {
@@ -318,6 +342,7 @@ class PhasedCircuitBreakerMetricsTest {
                 denied++;
             }
         }
+
         assertThat(completed).isEqualTo(count);
         return denied;
     }
@@ -332,7 +357,8 @@ class PhasedCircuitBreakerMetricsTest {
 
     private static void assertRecovery(MeterRegistry meters, int phase, int percentage) {
         assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_PHASE).gauge().value()).isEqualTo(phase);
-        assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge().value()).isEqualTo(percentage);
+        assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge().value())
+            .isEqualTo(percentage);
     }
 
     private static void assertHalfOpen(MeterRegistry meters) {

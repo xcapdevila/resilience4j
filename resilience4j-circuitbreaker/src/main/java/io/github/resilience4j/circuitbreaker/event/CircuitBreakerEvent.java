@@ -91,6 +91,7 @@ public interface CircuitBreakerEvent {
          * A CircuitBreakerEvent which informs the CircuitBreaker show call rate has been breached
          */
         SLOW_CALL_RATE_EXCEEDED(false),
+
         /**
          * A CircuitBreakerEvent which informs that the phased HALF_OPEN recovery phase changed.
          */

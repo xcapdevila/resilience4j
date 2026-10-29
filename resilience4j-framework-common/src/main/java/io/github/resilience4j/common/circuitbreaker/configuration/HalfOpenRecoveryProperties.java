@@ -1,17 +1,20 @@
 /*
- * Copyright 2026 Resilience4j Authors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *  Copyright 2026 authors
  *
- *        https://www.apache.org/licenses/LICENSE-2.0
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *
  */
 package io.github.resilience4j.common.circuitbreaker.configuration;
 
@@ -27,12 +30,23 @@ import java.time.Duration;
  */
 public class HalfOpenRecoveryProperties {
 
-    @Nullable private Boolean enabled;
-    @Nullable private Integer initialTrafficPercentage;
-    @Nullable private Integer trafficPercentageStep;
-    @Nullable private Duration minimumPhaseDuration;
-    @Nullable private Integer minimumNumberOfCalls;
-    @Nullable private HalfOpenRecoveryConfig.FailureStrategy failureStrategy;
+    @Nullable
+    private Boolean enabled;
+
+    @Nullable
+    private Integer initialTrafficPercentage;
+
+    @Nullable
+    private Integer trafficPercentageStep;
+
+    @Nullable
+    private Duration minimumPhaseDuration;
+
+    @Nullable
+    private Integer minimumNumberOfCalls;
+
+    @Nullable
+    private HalfOpenRecoveryConfig.FailureStrategy failureStrategy;
 
     /**
      * Returns this configuration layer's enablement setting.
@@ -40,7 +54,9 @@ public class HalfOpenRecoveryProperties {
      * @return true to enable, false to disable, or null to inherit the setting
      */
     @Nullable
-    public Boolean getEnabled() { return enabled; }
+    public Boolean getEnabled() {
+        return enabled;
+    }
 
     /**
      * Sets whether this layer enables or explicitly disables phased recovery.
@@ -59,7 +75,9 @@ public class HalfOpenRecoveryProperties {
      * @return zero for automatic initialization, an explicit percentage, or null to inherit
      */
     @Nullable
-    public Integer getInitialTrafficPercentage() { return initialTrafficPercentage; }
+    public Integer getInitialTrafficPercentage() {
+        return initialTrafficPercentage;
+    }
 
     /**
      * Sets the initial percentage. Validation occurs when the policy is built.
@@ -78,7 +96,9 @@ public class HalfOpenRecoveryProperties {
      * @return the configured step, or null to inherit
      */
     @Nullable
-    public Integer getTrafficPercentageStep() { return trafficPercentageStep; }
+    public Integer getTrafficPercentageStep() {
+        return trafficPercentageStep;
+    }
 
     /**
      * Sets the increment in percentage points. Validation occurs when the policy is built.
@@ -97,7 +117,9 @@ public class HalfOpenRecoveryProperties {
      * @return the configured duration, or null to inherit
      */
     @Nullable
-    public Duration getMinimumPhaseDuration() { return minimumPhaseDuration; }
+    public Duration getMinimumPhaseDuration() {
+        return minimumPhaseDuration;
+    }
 
     /**
      * Sets the minimum time before a healthy phase may advance. Validation occurs
@@ -117,7 +139,9 @@ public class HalfOpenRecoveryProperties {
      * @return the configured sample count, or null to inherit
      */
     @Nullable
-    public Integer getMinimumNumberOfCalls() { return minimumNumberOfCalls; }
+    public Integer getMinimumNumberOfCalls() {
+        return minimumNumberOfCalls;
+    }
 
     /**
      * Sets the number of recorded completions required for phase evaluation.
@@ -137,7 +161,9 @@ public class HalfOpenRecoveryProperties {
      * @return the configured failure strategy, or null to inherit
      */
     @Nullable
-    public HalfOpenRecoveryConfig.FailureStrategy getFailureStrategy() { return failureStrategy; }
+    public HalfOpenRecoveryConfig.FailureStrategy getFailureStrategy() {
+        return failureStrategy;
+    }
 
     /**
      * Sets the response to an unhealthy phase evaluation.
@@ -145,7 +171,8 @@ public class HalfOpenRecoveryProperties {
      * @param strategy the failure strategy, or null to inherit
      * @return these properties
      */
-    public HalfOpenRecoveryProperties setFailureStrategy(HalfOpenRecoveryConfig.FailureStrategy strategy) {
+    public HalfOpenRecoveryProperties setFailureStrategy(
+        HalfOpenRecoveryConfig.FailureStrategy strategy) {
         this.failureStrategy = strategy;
         return this;
     }
@@ -153,9 +180,12 @@ public class HalfOpenRecoveryProperties {
     @Nullable
     static HalfOpenRecoveryProperties merge(@Nullable HalfOpenRecoveryProperties instance,
         @Nullable HalfOpenRecoveryProperties inherited) {
-        if (inherited == null) return instance;
+        if (inherited == null) {
+            return instance;
+        }
         HalfOpenRecoveryProperties merged = new HalfOpenRecoveryProperties();
-        merged.enabled = instance != null && instance.enabled != null ? instance.enabled : inherited.enabled;
+        merged.enabled = instance != null && instance.enabled != null
+            ? instance.enabled : inherited.enabled;
         merged.initialTrafficPercentage = instance != null && instance.initialTrafficPercentage != null
             ? instance.initialTrafficPercentage : inherited.initialTrafficPercentage;
         merged.trafficPercentageStep = instance != null && instance.trafficPercentageStep != null
@@ -186,11 +216,21 @@ public class HalfOpenRecoveryProperties {
         }
         HalfOpenRecoveryConfig.Builder builder = inherited == null
             ? HalfOpenRecoveryConfig.custom() : HalfOpenRecoveryConfig.from(inherited);
-        if (initialTrafficPercentage != null) builder.initialTrafficPercentage(initialTrafficPercentage);
-        if (trafficPercentageStep != null) builder.trafficPercentageStep(trafficPercentageStep);
-        if (minimumPhaseDuration != null) builder.minimumPhaseDuration(minimumPhaseDuration);
-        if (minimumNumberOfCalls != null) builder.minimumNumberOfCalls(minimumNumberOfCalls);
-        if (failureStrategy != null) builder.failureStrategy(failureStrategy);
+        if (initialTrafficPercentage != null) {
+            builder.initialTrafficPercentage(initialTrafficPercentage);
+        }
+        if (trafficPercentageStep != null) {
+            builder.trafficPercentageStep(trafficPercentageStep);
+        }
+        if (minimumPhaseDuration != null) {
+            builder.minimumPhaseDuration(minimumPhaseDuration);
+        }
+        if (minimumNumberOfCalls != null) {
+            builder.minimumNumberOfCalls(minimumNumberOfCalls);
+        }
+        if (failureStrategy != null) {
+            builder.failureStrategy(failureStrategy);
+        }
         return builder.build();
     }
 }
