@@ -76,7 +76,9 @@ class HalfOpenRecoveryStateMachineTest {
                 fixture.success();
                 assertPhase(fixture, i + 1, percentages[i]);
                 fixture.clock.advance(DWELL);
-                fixture.breaker.tryAcquirePermission();
+                fixture.acquireAdmitted();
+                assertPhase(fixture, i + 1, percentages[i]);
+                fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
             }
 
             assertThat(fixture.breaker.getState()).isEqualTo(CLOSED);
@@ -160,14 +162,18 @@ class HalfOpenRecoveryStateMachineTest {
         assertPhase(fixture, 1, 50);
         fixture.clock.advance(Duration.ofNanos(1));
 
-        assertThat(fixture.breaker.tryAcquirePermission()).isTrue();
-        assertPhase(fixture, 2, 100);
+        fixture.acquireAdmitted();
+        assertPhase(fixture, 1, 50);
         fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+        assertPhase(fixture, 2, 100);
+        fixture.success();
         fixture.success();
 
         assertThat(fixture.breaker.getState()).isEqualTo(HALF_OPEN);
         fixture.clock.advance(DWELL);
-        fixture.breaker.tryAcquirePermission();
+        fixture.acquireAdmitted();
+        assertPhase(fixture, 2, 100);
+        fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
 
         assertThat(fixture.breaker.getState()).isEqualTo(CLOSED);
         assertThat(fixture.breaker.getHalfOpenPhase().isActive()).isFalse();
@@ -192,6 +198,7 @@ class HalfOpenRecoveryStateMachineTest {
         for (int i = 0; i < 100; i++) {
             fixture.breaker.tryAcquirePermission();
         }
+        fixture.success();
         assertPhase(fixture, 1, 50);
     }
 
@@ -250,8 +257,8 @@ class HalfOpenRecoveryStateMachineTest {
     }
 
     @Test
-    void deadlineIsSharedAcrossPhasesAndHonorsTheParentTimeoutTarget() {
-        Fixture fixture = new Fixture(recovery().build(), config ->
+    void deadlineIsSharedAcrossAdvancesAndStepBacksAndReopensRecovery() {
+        Fixture fixture = new Fixture(recovery().failureStrategy(STEP_BACK).build(), config ->
             config.maxWaitDurationInHalfOpenState(Duration.ofSeconds(30)));
 
         assertThat(fixture.scheduler.tasks).hasSize(1);
@@ -260,17 +267,15 @@ class HalfOpenRecoveryStateMachineTest {
 
         assertThat(fixture.scheduler.tasks).hasSize(1);
         verify(fixture.scheduler.futures.get(0), never()).cancel(anyBoolean());
+        fixture.failure();
+        fixture.failure();
+        assertPhase(fixture, 1, 50);
+        assertThat(fixture.scheduler.tasks).hasSize(1);
+        verify(fixture.scheduler.futures.get(0), never()).cancel(anyBoolean());
         fixture.scheduler.tasks.get(0).run();
 
         assertThat(fixture.breaker.getState()).isEqualTo(OPEN);
         verify(fixture.scheduler.futures.get(0)).cancel(false);
-
-        Fixture close = new Fixture(recovery().build(), config -> config
-            .maxWaitDurationInHalfOpenState(Duration.ofSeconds(30))
-            .transitionToStateAfterWaitDuration(CLOSED));
-        close.scheduler.tasks.get(0).run();
-
-        assertThat(close.breaker.getState()).isEqualTo(CLOSED);
     }
 
     @Test
@@ -364,7 +369,7 @@ class HalfOpenRecoveryStateMachineTest {
     }
 
     @Test
-    void concurrentElapsedChecksPublishOneSuccessorPhase() throws Exception {
+    void concurrentCompletionsAfterDwellPublishOneSuccessorPhase() throws Exception {
         Fixture fixture = new Fixture(recovery().build());
         AtomicInteger advanced = new AtomicInteger();
         fixture.breaker.getEventPublisher().onHalfOpenPhaseTransition(event -> {
@@ -373,13 +378,17 @@ class HalfOpenRecoveryStateMachineTest {
             }
         });
         fixture.success();
-        fixture.success();
+        for (int call = 0; call < 8; call++) {
+            fixture.acquireAdmitted();
+        }
         fixture.clock.advance(DWELL);
-        concurrent(8, () -> fixture.breaker.tryAcquirePermission() ? 1 : 0);
+        concurrent(8, () -> {
+            fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+            return 1;
+        });
         assertPhase(fixture, 2, 100);
 
         assertThat(advanced.get()).isEqualTo(1);
-        assertThat(fixture.breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
     }
 
     @Test
@@ -481,7 +490,9 @@ class HalfOpenRecoveryStateMachineTest {
         assertThat(fixture.scheduler.tasks).hasSize(1);
         verify(fixture.scheduler.futures.get(0), never()).cancel(anyBoolean());
         fixture.clock.advance(Duration.ofSeconds(1));
-        fixture.breaker.tryAcquirePermission();
+        fixture.acquireAdmitted();
+        assertPhase(fixture, 2, 50);
+        fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
         assertPhase(fixture, 3, 75);
 
         assertThat(fixture.scheduler.tasks).hasSize(1);

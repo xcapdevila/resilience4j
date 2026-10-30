@@ -103,7 +103,9 @@ public final class HalfOpenRecoveryConfig implements Serializable {
 
     /**
      * Returns the minimum time a healthy phase must remain active before advancing.
-     * An unhealthy evaluation may reopen or step back sooner.
+     * A newly recorded outcome must validate the phase after this time has elapsed;
+     * elapsed time and an admission attempt alone cannot advance it. An unhealthy
+     * evaluation may reopen or step back sooner.
      *
      * @return the positive minimum phase duration
      */

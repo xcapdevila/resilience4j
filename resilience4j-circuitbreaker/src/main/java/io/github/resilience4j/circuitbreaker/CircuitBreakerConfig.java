@@ -603,6 +603,8 @@ public class CircuitBreakerConfig implements Serializable {
          * Enables percentage-based recovery in HALF_OPEN. Null explicitly restores
          * the legacy finite-probe behavior. Late callbacks retain the upstream
          * convention of recording their outcome in the current state.
+         * A positive HALF_OPEN timeout must target OPEN when this policy is enabled;
+         * an incompatible CLOSED target is rejected when the configuration is built.
          *
          * @param recoveryConfig the recovery policy, or null to disable phased recovery
          * @return this builder
@@ -1025,6 +1027,13 @@ public class CircuitBreakerConfig implements Serializable {
          * @throws IllegalStateException when the parameter is invalid
          */
         public CircuitBreakerConfig build() {
+            if (halfOpenRecoveryConfig != null
+                && maxWaitDurationInHalfOpenState.compareTo(Duration.ZERO) > 0
+                && transitionToStateAfterWaitDuration == State.CLOSED) {
+                throw new IllegalStateException("Gradual HALF_OPEN recovery requires "
+                    + "transitionToStateAfterWaitDuration=OPEN when "
+                    + "maxWaitDurationInHalfOpenState is positive");
+            }
             CircuitBreakerConfig config = new CircuitBreakerConfig();
             config.waitIntervalFunctionInOpenState = validateWaitIntervalFunctionInOpenState();
             config.transitionOnResult = transitionOnResult;

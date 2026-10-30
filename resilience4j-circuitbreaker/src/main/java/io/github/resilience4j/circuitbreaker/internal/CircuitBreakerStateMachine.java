@@ -1409,9 +1409,8 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
 
         @Override
         public boolean tryAcquirePermission() {
-            if (phase.minimumDurationElapsed(clock)) {
-                evaluate(circuitBreakerMetrics.checkIfThresholdsExceeded());
-            }
+            // Only a recorded outcome can validate a recovery phase. An offered
+            // call after an idle period must not advance using old health alone.
             CircuitBreakerState current = stateReference.get();
             if (current != this) {
                 return current.tryAcquirePermission();

@@ -257,24 +257,28 @@ class CircuitBreakerAdmissionMetricsTest {
         assertCounts(breaker, 5, 2);
         clock.advance(Duration.ofSeconds(10));
 
-        assertThat(breaker.tryAcquirePermission()).isTrue();
+        acquireAdmitted(breaker);
+        assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(25);
+        assertCounts(breaker, 9, 3);
+        breaker.onSuccess(0, TimeUnit.NANOSECONDS);
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(50);
-        assertCounts(breaker, 6, 3);
+        assertCounts(breaker, 9, 3);
+        acquireAdmitted(breaker);
         breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
         acquireAdmitted(breaker);
         breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
 
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(25);
-        assertCounts(breaker, 8, 4);
+        assertCounts(breaker, 13, 5);
         AdmissionMetrics previous = breaker.getAdmissionMetrics();
         breaker.reset();
 
-        assertCounts(breaker, 8, 4);
+        assertCounts(breaker, 13, 5);
         breaker.acquirePermission();
 
-        assertCounts(breaker, 9, 5);
-        assertThat(previous.getNumberOfAttempts()).isEqualTo(8);
-        assertThat(previous.getNumberOfPermittedAttempts()).isEqualTo(4);
+        assertCounts(breaker, 14, 6);
+        assertThat(previous.getNumberOfAttempts()).isEqualTo(13);
+        assertThat(previous.getNumberOfPermittedAttempts()).isEqualTo(5);
     }
 
     @Test

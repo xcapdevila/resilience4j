@@ -76,19 +76,49 @@ A phase advances only when both conditions hold:
 * Its bounded window of the latest `minimumNumberOfCalls` completed, recorded outcomes
   satisfies the existing failure-rate and slow-call thresholds.
 
-Progress is evaluated on an admission attempt or a recorded completion. An idle circuit
-does not advance solely because its minimum duration elapsed. Ignored outcomes and rejected
-attempts do not supply health samples. The 100% phase also needs its own duration and healthy
-window before the breaker transitions to CLOSED.
+Healthy progress is evaluated when an outcome is recorded. A new admission after an idle
+period cannot advance a phase using only its old health window; a new recorded outcome
+must satisfy the duration and sample gates. Ignored outcomes and rejected attempts do not
+supply health samples. The 100% phase also needs its own duration and healthy window before
+the breaker transitions to CLOSED.
 
 Each phase has a fresh health window. As with the existing CircuitBreaker completion API,
 an in-flight call is recorded against the state/phase current when its completion is reported;
 the API does not carry an admission-generation token. Completion counters and timers exposed
 by Micrometer remain cumulative across phase changes.
 
+Consequently, results from calls admitted in an earlier phase can contribute to the current
+phase's window, including the final 100-percent phase. Validation means that the completion
+window is below the configured thresholds while that target is active; it does not guarantee
+that every sampled call was admitted at that target. This preserves the existing call API
+and continuous admission between phases. The effect depends on request latency, phase
+duration, sample size and offered traffic; a smaller percentage step alone does not bound it.
+
 This policy controls a share of attempts within one breaker instance. It does not impose a
 requests-per-second or concurrent-call limit and does not coordinate multiple application
 instances. Bulkhead and RateLimiter can be composed with the circuit breaker for those needs.
+
+== Retry composition
+
+When Retry wraps the circuit breaker, every retry requests another permission. Configure
+Retry to ignore `CallNotPermittedException` when rejected logical requests should remain
+shed. Retrying that exception can admit the same logical request on a later attempt while
+the configured share of breaker attempts is still respected.
+
+[source,java]
+----
+Retry retry = Retry.of("payment-provider", RetryConfig.custom()
+    .ignoreExceptions(CallNotPermittedException.class)
+    .build());
+Supplier<Response> call = Retry.decorateSupplier(retry,
+    CircuitBreaker.decorateSupplier(breaker, paymentProvider::pay));
+----
+
+This leaves retries for other configured failures available. Use RateLimiter or Bulkhead
+when a request-rate or concurrency limit is also needed. The native
+link:../resilience4j-all/src/test/java/io/github/resilience4j/decorators/HalfOpenRecoveryCompositionTest.java[composition tests]
+exercise rejected retries and compare both recovery modes against independently recovering
+capacity models, including a case where the offered load exceeds what the ramp can protect.
 
 == Failures and deadlines
 
@@ -98,8 +128,10 @@ duration and health window. Threshold evaluation requires the configured recover
 this option does not mean that the first individual failure necessarily trips the circuit.
 
 `maxWaitDurationInHalfOpenState` covers the entire recovery episode and is not restarted for
-each phase. Its existing configured OPEN/CLOSED timeout target is honored. Zero disables this
-global deadline. For example, 20 phases with a ten-second minimum need at least 200 seconds,
+each phase. With gradual recovery and a positive timeout, the target must be OPEN;
+configuration with a CLOSED target is rejected rather than bypassing the ramp. The standard
+finite-probe policy retains both timeout targets. Zero disables this global deadline.
+For example, 20 phases with a ten-second minimum need at least 200 seconds,
 and can need longer when traffic is sparse. Reset and administrative transitions cancel the
 old recovery episode; obsolete timer callbacks cannot change a replacement state.
 

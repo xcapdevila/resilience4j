@@ -47,9 +47,13 @@ final class HalfOpenRecoveryPolicy {
 
     private final HalfOpenRecoveryConfig config;
     private final int numberOfPhases;
+    private final AtomicInteger admissionRemainder;
 
     HalfOpenRecoveryPolicy(HalfOpenRecoveryConfig config) {
         this.config = Objects.requireNonNull(config);
+        // Prime the first probe once per recovery cycle. Phase changes carry the remaining
+        // fractional admission budget instead of granting another initial probe.
+        admissionRemainder = new AtomicInteger(100 - config.getInitialTrafficPercentage());
         int remaining = 100 - config.getInitialTrafficPercentage();
         numberOfPhases = 1 + (remaining + config.getTrafficPercentageStep() - 1)
             / config.getTrafficPercentageStep();
@@ -66,24 +70,25 @@ final class HalfOpenRecoveryPolicy {
         int percentage = Math.min(100, config.getInitialTrafficPercentage()
             + index * config.getTrafficPercentageStep());
         return new Phase(config, index, new HalfOpenPhase(index + 1, numberOfPhases, percentage),
-            enteredAt);
+            enteredAt, admissionRemainder);
     }
 
-    /** Immutable phase identity and timing, with one atomic cursor for admission. */
+    /** Immutable phase identity and timing sharing the recovery cycle's admission budget. */
     static final class Phase {
 
         private final HalfOpenRecoveryConfig config;
         private final int index;
         private final HalfOpenPhase snapshot;
         private final Instant enteredAt;
-        private final AtomicInteger admissionSlot = new AtomicInteger();
+        private final AtomicInteger admissionRemainder;
 
         private Phase(HalfOpenRecoveryConfig config, int index, HalfOpenPhase snapshot,
-            Instant enteredAt) {
+            Instant enteredAt, AtomicInteger admissionRemainder) {
             this.config = config;
             this.index = index;
             this.snapshot = snapshot;
             this.enteredAt = Objects.requireNonNull(enteredAt);
+            this.admissionRemainder = admissionRemainder;
         }
 
         int getIndex() {
@@ -95,9 +100,9 @@ final class HalfOpenRecoveryPolicy {
         }
 
         boolean tryAcquirePermission() {
-            int slot = admissionSlot.getAndUpdate(value -> value == 99 ? 0 : value + 1);
             int percentage = snapshot.getPermittedTrafficPercentage();
-            return (slot * percentage) % 100 < percentage;
+            int remainder = admissionRemainder.getAndUpdate(value -> (value + percentage) % 100);
+            return remainder + percentage >= 100;
         }
 
         boolean minimumDurationElapsed(Clock clock) {

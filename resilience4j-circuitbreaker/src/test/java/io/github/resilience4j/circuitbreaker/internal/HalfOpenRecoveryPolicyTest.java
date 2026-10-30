@@ -144,7 +144,7 @@ class HalfOpenRecoveryPolicyTest {
     }
 
     @Test
-    void aFreshPhaseGetsItsOwnSamplerAndDwellWithoutMutatingThePreviousPhase() {
+    void aFreshPhaseRestartsItsDwellAndSharesTheRecoveryAdmissionBudget() {
         HalfOpenRecoveryPolicy policy = new HalfOpenRecoveryPolicy(config().build());
         var previous = policy.newPhase(0, START);
 
@@ -152,12 +152,55 @@ class HalfOpenRecoveryPolicyTest {
         assertThat(previous.tryAcquirePermission()).isFalse();
         var retried = policy.newPhase(0, START.plus(DWELL));
 
-        assertThat(retried.tryAcquirePermission()).isTrue();
+        assertThat(retried.tryAcquirePermission()).isFalse();
         assertThat(previous.tryAcquirePermission()).isFalse();
         assertThat(previous.evaluate(Result.BELOW_THRESHOLDS, at(START.plus(DWELL))))
             .isEqualTo(Decision.ADVANCE);
         assertThat(retried.evaluate(Result.BELOW_THRESHOLDS, at(START.plus(DWELL))))
             .isEqualTo(Decision.STAY);
+    }
+
+    @Test
+    void recreatingAFiftyPercentPhaseCannotMintAdditionalAdmissions() {
+        HalfOpenRecoveryPolicy policy = new HalfOpenRecoveryPolicy(config()
+            .initialTrafficPercentage(50).build());
+        int admitted = 0;
+        for (int attempt = 0; attempt < 100; attempt++) {
+            var phase = policy.newPhase(0, START.plusNanos(attempt));
+            if (phase.tryAcquirePermission()) {
+                admitted++;
+            }
+        }
+
+        assertThat(admitted).isEqualTo(50);
+    }
+
+    @Test
+    void advancingAndSteppingBackPreserveTheFractionalBudgetAtEveryAttempt() {
+        HalfOpenRecoveryPolicy policy = new HalfOpenRecoveryPolicy(config()
+            .trafficPercentageStep(25).build());
+        int[] phaseIndices = {0, 1, 2, 1, 0, 1, 2, 3, 2, 1, 0};
+        int admitted = 0;
+        int offeredPercentagePoints = 0;
+        int attempts = 0;
+        for (int cycle = 0; cycle < 20; cycle++) {
+            for (int index : phaseIndices) {
+                var phase = policy.newPhase(index, START.plusNanos(attempts));
+                int target = phase.getSnapshot().getPermittedTrafficPercentage();
+                for (int offer = 0; offer < 3; offer++) {
+                    offeredPercentagePoints += target;
+                    attempts++;
+                    if (phase.tryAcquirePermission()) {
+                        admitted++;
+                    }
+
+                    assertThat(Math.abs(100 * admitted - offeredPercentagePoints))
+                        .as("Admission differs from accumulated targets by less than one at attempt %s",
+                            attempts)
+                        .isLessThan(100);
+                }
+            }
+        }
     }
 
     @Test
