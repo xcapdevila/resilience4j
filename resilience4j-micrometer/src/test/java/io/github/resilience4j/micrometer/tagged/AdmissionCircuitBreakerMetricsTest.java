@@ -127,21 +127,25 @@ class AdmissionCircuitBreakerMetricsTest {
             assertCounts(meters, 3, 2);
             clock.advance(Duration.ofSeconds(10));
 
+            assertThat(breaker.tryAcquirePermission()).isFalse();
+            assertCounts(meters, 4, 2);
+            assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(50);
             assertThat(breaker.tryAcquirePermission()).isTrue();
-            assertCounts(meters, 4, 3);
+            breaker.onSuccess(1, TimeUnit.MILLISECONDS);
+            assertCounts(meters, 5, 3);
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge().value())
                 .isEqualTo(100);
 
             breaker.reset();
 
-            assertCounts(meters, 4, 3);
+            assertCounts(meters, 5, 3);
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge().value())
                 .isZero();
             breaker.acquirePermission();
             breaker.transitionToOpenState();
 
             assertThat(breaker.tryAcquirePermission()).isFalse();
-            assertCounts(meters, 6, 4);
+            assertCounts(meters, 7, 4);
             assertThat(ids(meters)).containsExactlyInAnyOrderElementsOf(originalIds);
         } finally {
             meters.close();
