@@ -39,17 +39,17 @@ public interface VavrCircuitBreaker {
     static <T> CheckedFunction0<T> decorateCheckedSupplier(CircuitBreaker circuitBreaker,
                                                            CheckedFunction0<T> supplier) {
         return () -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 T returnValue = supplier.apply();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
                 return returnValue;
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -65,16 +65,16 @@ public interface VavrCircuitBreaker {
     static CheckedRunnable decorateCheckedRunnable(CircuitBreaker circuitBreaker,
                                                    CheckedRunnable runnable) {
         return () -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 runnable.run();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -91,15 +91,16 @@ public interface VavrCircuitBreaker {
     static <T> Supplier<Either<Exception, T>> decorateEitherSupplier(CircuitBreaker circuitBreaker,
                                                                      Supplier<Either<? extends Exception, T>> supplier) {
         return () -> {
-            if (circuitBreaker.tryAcquirePermission()) {
+            final CallPermission permission = circuitBreaker.tryAcquireCallPermission();
+            if (permission != null) {
                 final long start = circuitBreaker.getCurrentTimestamp();
                 Either<? extends Exception, T> result = supplier.get();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
                 if (result.isRight()) {
-                    circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                    permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
                 } else {
                     Exception exception = result.getLeft();
-                    circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                    permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 }
                 return Either.narrow(result);
             } else {
@@ -120,15 +121,16 @@ public interface VavrCircuitBreaker {
     static <T> Supplier<Try<T>> decorateTrySupplier(CircuitBreaker circuitBreaker,
                                                     Supplier<Try<T>> supplier) {
         return () -> {
-            if (circuitBreaker.tryAcquirePermission()) {
+            final CallPermission permission = circuitBreaker.tryAcquireCallPermission();
+            if (permission != null) {
                 final long start = circuitBreaker.getCurrentTimestamp();
                 Try<T> result = supplier.get();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
                 if (result.isSuccess()) {
-                    circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                    permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
                     return result;
                 } else {
-                    circuitBreaker
+                    permission
                         .onError(duration, circuitBreaker.getTimestampUnit(), result.getCause());
                     return result;
                 }
@@ -150,16 +152,16 @@ public interface VavrCircuitBreaker {
     static <T> CheckedConsumer<T> decorateCheckedConsumer(CircuitBreaker circuitBreaker,
                                                           CheckedConsumer<T> consumer) {
         return (t) -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 consumer.accept(t);
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -177,17 +179,17 @@ public interface VavrCircuitBreaker {
     static <T, R> CheckedFunction1<T, R> decorateCheckedFunction(CircuitBreaker circuitBreaker,
                                                                  CheckedFunction1<T, R> function) {
         return (T t) -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 R returnValue = function.apply(t);
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
                 return returnValue;
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };

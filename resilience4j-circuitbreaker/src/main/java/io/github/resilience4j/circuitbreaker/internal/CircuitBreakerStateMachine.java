@@ -19,6 +19,7 @@
 package io.github.resilience4j.circuitbreaker.internal;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
@@ -70,6 +71,27 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
     private final TimeUnit timestampUnit;
     @Nullable
     private final AdmissionCounters admissionCounters;
+    private final CallPermission legacyCallPermission = new CallPermission() {
+        @Override
+        public void onSuccess(long duration, TimeUnit unit) {
+            CircuitBreakerStateMachine.this.onSuccess(duration, unit);
+        }
+
+        @Override
+        public void onError(long duration, TimeUnit unit, Throwable error) {
+            CircuitBreakerStateMachine.this.onError(duration, unit, error);
+        }
+
+        @Override
+        public void onResult(long duration, TimeUnit unit, @Nullable Object result) {
+            CircuitBreakerStateMachine.this.onResult(duration, unit, result);
+        }
+
+        @Override
+        public void release() {
+            CircuitBreakerStateMachine.this.releasePermission();
+        }
+    };
 
     /**
      * Creates a circuitBreaker.
@@ -172,8 +194,149 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
         return timestampUnit;
     }
 
+    /**
+     * Native standard recovery reuses its legacy forwarding handle. Phased recovery
+     * obtains the actual granting owner from the state admission path, then binds a
+     * one-shot completion handle to that unique owner rather than a public phase number.
+     */
+    @Override
+    @Nullable
+    public CallPermission tryAcquireCallPermission() {
+        if (admissionCounters == null) {
+            return tryAcquirePermission() ? legacyCallPermission : null;
+        }
+        admissionCounters.numberOfAttempts.increment();
+        CircuitBreakerState owner = stateReference.get().tryAcquirePermissionOwner();
+        if (owner == null) {
+            publishCallNotPermittedEvent();
+            return null;
+        }
+        admissionCounters.numberOfPermittedAttempts.increment();
+        return new OwnerCallPermission(owner);
+    }
+
+    @Override
+    public CallPermission acquireCallPermission() {
+        if (admissionCounters == null) {
+            acquirePermission();
+            return legacyCallPermission;
+        }
+        CallPermission permission = tryAcquireCallPermission();
+        if (permission == null) {
+            throw CallNotPermittedException.createCallNotPermittedException(this);
+        }
+        return permission;
+    }
+
+    private void requireLegacyCallAccess() {
+        if (admissionCounters != null) {
+            throw new IllegalStateException("Phased recovery requires an invocation-scoped "
+                + "CallPermission. Use acquireCallPermission()/tryAcquireCallPermission() "
+                + "and report the outcome or release on that handle, or use a built-in decorator.");
+        }
+    }
+
+    private final class OwnerCallPermission implements CallPermission {
+        private final CircuitBreakerState owner;
+        private final AtomicBoolean completed = new AtomicBoolean();
+
+        private OwnerCallPermission(CircuitBreakerState owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public void onSuccess(long duration, TimeUnit unit) {
+            if (completed.compareAndSet(false, true)) {
+                recordSuccess(duration, unit);
+            }
+        }
+
+        @Override
+        public void onError(long duration, TimeUnit unit, Throwable error) {
+            if (!completed.compareAndSet(false, true)) {
+                return;
+            }
+            Throwable cause = (error instanceof CompletionException || error instanceof ExecutionException)
+                && error.getCause() != null ? error.getCause() : error;
+            if (testPredicate(circuitBreakerConfig.getIgnoreExceptionPredicate(), cause)) {
+                owner.releasePermission();
+                publishCircuitIgnoredErrorEvent(name, duration, unit, cause);
+                return;
+            }
+            if (testPredicate(circuitBreakerConfig.getRecordExceptionPredicate(), cause)) {
+                publishCircuitErrorEvent(name, duration, unit, cause);
+                recordError(duration, unit, cause);
+            } else {
+                recordSuccess(duration, unit);
+            }
+            handleTransition(Either.right(cause));
+        }
+
+        @Override
+        public void onResult(long duration, TimeUnit unit, @Nullable Object result) {
+            if (!completed.compareAndSet(false, true)) {
+                return;
+            }
+            if (result != null && testPredicate(circuitBreakerConfig.getRecordResultPredicate(), result)) {
+                ResultRecordedAsFailureException failure = new ResultRecordedAsFailureException(name, result);
+                publishCircuitErrorEvent(name, duration, unit, failure);
+                recordError(duration, unit, failure);
+            } else {
+                recordSuccess(duration, unit);
+                if (result != null) {
+                    handleTransition(Either.left(result));
+                }
+            }
+        }
+
+        @Override
+        public void release() {
+            if (completed.compareAndSet(false, true)) {
+                owner.releasePermission();
+            }
+        }
+
+        private <T> boolean testPredicate(Predicate<T> predicate, T value) {
+            try {
+                return predicate.test(value);
+            } catch (RuntimeException | Error failure) {
+                owner.releasePermission();
+                throw failure;
+            }
+        }
+
+        private void recordSuccess(long duration, TimeUnit unit) {
+            publishSuccessEvent(duration, unit);
+            if (owner instanceof ClosedState closed) {
+                closed.checkContextualThresholds(closed.circuitBreakerMetrics.onSuccess(duration, unit));
+            } else {
+                // Recovery owners evaluate only while still current. Recording on an
+                // obsolete owner cannot populate another phase's fresh metrics window.
+                owner.onSuccess(duration, unit);
+            }
+        }
+
+        private void recordError(long duration, TimeUnit unit, Throwable error) {
+            if (owner instanceof ClosedState closed) {
+                closed.checkContextualThresholds(closed.circuitBreakerMetrics.onError(duration, unit));
+            } else {
+                owner.onError(duration, unit, error);
+            }
+        }
+
+        private void handleTransition(Either<Object, Throwable> result) {
+            CircuitBreakerConfig.TransitionCheckResult transition = circuitBreakerConfig.getTransitionOnResult()
+                .apply(result);
+            if (owner instanceof ClosedState closed) {
+                closed.handleContextualTransition(transition);
+            }
+            // Other states retain their existing no-op transitionOnResult handling.
+        }
+    }
+
     @Override
     public boolean tryAcquirePermission() {
+        requireLegacyCallAccess();
         if (admissionCounters != null) {
             admissionCounters.numberOfAttempts.increment();
         }
@@ -190,11 +353,13 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
 
     @Override
     public void releasePermission() {
+        requireLegacyCallAccess();
         stateReference.get().releasePermission();
     }
 
     @Override
     public void acquirePermission() {
+        requireLegacyCallAccess();
         if (admissionCounters != null) {
             admissionCounters.numberOfAttempts.increment();
         }
@@ -211,6 +376,7 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
 
     @Override
     public void onError(long duration, TimeUnit durationUnit, Throwable throwable) {
+        requireLegacyCallAccess();
         // Handle the case if the completable future throws a CompletionException wrapping the original exception
         // where original exception is the one to retry not the CompletionException.
         if (throwable instanceof CompletionException || throwable instanceof ExecutionException) {
@@ -242,6 +408,7 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
 
     @Override
     public void onSuccess(long duration, TimeUnit durationUnit) {
+        requireLegacyCallAccess();
         LOG.debug("CircuitBreaker '{}' succeeded:", name);
         publishSuccessEvent(duration, durationUnit);
         stateReference.get().onSuccess(duration, durationUnit);
@@ -249,6 +416,7 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
 
     @Override
     public void onResult(long duration, TimeUnit durationUnit, @Nullable Object result) {
+        requireLegacyCallAccess();
         if (result != null && evaluatePredicate(circuitBreakerConfig.getRecordResultPredicate(), result)) {
             LOG.debug("CircuitBreaker '{}' recorded a result type '{}' as failure:", name, result.getClass());
             ResultRecordedAsFailureException failure = new ResultRecordedAsFailureException(name, result);
@@ -578,6 +746,11 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
 
         boolean tryAcquirePermission();
 
+        @Nullable
+        default CircuitBreakerState tryAcquirePermissionOwner() {
+            return tryAcquirePermission() ? this : null;
+        }
+
         void acquirePermission();
 
         void releasePermission();
@@ -777,6 +950,31 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
             }
         }
 
+        private void checkContextualThresholds(Result result) {
+            if (Result.hasExceededThresholds(result) && stateReference.get() == this
+                && isClosed.compareAndSet(true, false)) {
+                stateTransitionIfCurrent(this, OPEN,
+                    current -> new OpenState(current.attempts() + 1, current.getMetrics()),
+                    () -> publishCircuitThresholdsExceededEvent(result, circuitBreakerMetrics));
+            }
+        }
+
+        private void handleContextualTransition(CircuitBreakerConfig.TransitionCheckResult result) {
+            if (!result.isTransitionToOpen() || stateReference.get() != this
+                || !isClosed.compareAndSet(true, false)) {
+                return;
+            }
+            if (result.getWaitDuration() != null) {
+                stateTransitionIfCurrent(this, OPEN,
+                    current -> new OpenState(current.attempts(), result.getWaitDuration(), current.getMetrics()));
+            } else if (result.getWaitUntil() != null) {
+                stateTransitionIfCurrent(this, OPEN,
+                    current -> new OpenState(current.attempts(), result.getWaitUntil(), current.getMetrics()));
+            } else {
+                throw new IllegalArgumentException("Transition check requested OPEN without a wait duration");
+            }
+        }
+
         /**
          * Get the state of the CircuitBreaker
          */
@@ -864,6 +1062,17 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
             }
             circuitBreakerMetrics.onCallNotPermitted();
             return false;
+        }
+
+        @Override
+        @Nullable
+        public CircuitBreakerState tryAcquirePermissionOwner() {
+            if (clock.instant().isAfter(retryAfterWaitDuration) || !isOpen.get()) {
+                toHalfOpenState();
+                return stateReference.get().tryAcquirePermissionOwner();
+            }
+            circuitBreakerMetrics.onCallNotPermitted();
+            return null;
         }
 
         @Override
@@ -1420,6 +1629,20 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
             }
             circuitBreakerMetrics.onCallNotPermitted();
             return false;
+        }
+
+        @Override
+        @Nullable
+        public CircuitBreakerState tryAcquirePermissionOwner() {
+            CircuitBreakerState current = stateReference.get();
+            if (current != this) {
+                return current.tryAcquirePermissionOwner();
+            }
+            if (phase.tryAcquirePermission()) {
+                return this;
+            }
+            circuitBreakerMetrics.onCallNotPermitted();
+            return null;
         }
 
         @Override

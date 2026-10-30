@@ -101,12 +101,12 @@ class CircuitBreakerAdmissionMetricsTest {
         CircuitBreaker breaker = CircuitBreaker.of("released", CircuitBreakerConfig.custom()
             .ignoreExceptions(IgnoredFailure.class)
             .halfOpenRecoveryConfig(HalfOpenRecoveryConfig.custom().build()).build());
-        breaker.acquirePermission();
-        breaker.releasePermission();
+        breaker.acquireCallPermission().release();
 
         assertCounts(breaker, 1, 1);
-        assertThat(breaker.tryAcquirePermission()).isTrue();
-        breaker.onError(0, TimeUnit.NANOSECONDS, new IgnoredFailure());
+        CallPermission ignored = breaker.tryAcquireCallPermission();
+        assertThat(ignored).isNotNull();
+        ignored.onError(0, TimeUnit.NANOSECONDS, new IgnoredFailure());
 
         assertCounts(breaker, 2, 2);
         assertThat(breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
@@ -120,9 +120,9 @@ class CircuitBreakerAdmissionMetricsTest {
                 throw predicateFailure;
             })
             .halfOpenRecoveryConfig(HalfOpenRecoveryConfig.custom().build()).build());
-        breaker.acquirePermission();
+        CallPermission permission = breaker.acquireCallPermission();
 
-        assertThatThrownBy(() -> breaker.onError(0, TimeUnit.NANOSECONDS, new RuntimeException("backend")))
+        assertThatThrownBy(() -> permission.onError(0, TimeUnit.NANOSECONDS, new RuntimeException("backend")))
             .isSameAs(predicateFailure);
         assertCounts(breaker, 1, 1);
     }
@@ -149,10 +149,10 @@ class CircuitBreakerAdmissionMetricsTest {
         breaker.getEventPublisher().onCallNotPermitted(event -> {
             observed.set(breaker.getAdmissionMetrics());
             breaker.reset();
-            breaker.acquirePermission();
+            breaker.acquireCallPermission();
         });
 
-        assertThat(breaker.tryAcquirePermission()).isFalse();
+        assertThat((breaker.tryAcquireCallPermission() != null)).isFalse();
         assertThat(observed.get()).isNotNull();
         assertThat(observed.get().getNumberOfAttempts()).isEqualTo(1);
         assertThat(observed.get().getNumberOfPermittedAttempts()).isZero();
@@ -212,30 +212,30 @@ class CircuitBreakerAdmissionMetricsTest {
     @Test
     void enabledCountersSpanAdministrativeStatesWithoutRelyingOnEventsAndSurviveReset() {
         CircuitBreaker breaker = breaker(new ControlledClock(), 5);
-        breaker.acquirePermission();
+        breaker.acquireCallPermission();
 
-        assertThat(breaker.tryAcquirePermission()).isTrue();
+        assertThat((breaker.tryAcquireCallPermission() != null)).isTrue();
         assertCounts(breaker, 2, 2);
         breaker.transitionToDisabledState();
 
-        assertThat(breaker.tryAcquirePermission()).isTrue();
-        breaker.acquirePermission();
+        assertThat((breaker.tryAcquireCallPermission() != null)).isTrue();
+        breaker.acquireCallPermission();
 
         assertCounts(breaker, 4, 4);
         breaker.transitionToMetricsOnlyState();
-        breaker.acquirePermission();
+        breaker.acquireCallPermission();
 
-        assertThat(breaker.tryAcquirePermission()).isTrue();
+        assertThat((breaker.tryAcquireCallPermission() != null)).isTrue();
         assertCounts(breaker, 6, 6);
         breaker.transitionToForcedOpenState();
 
-        assertThat(breaker.tryAcquirePermission()).isFalse();
-        assertThatThrownBy(breaker::acquirePermission).isInstanceOf(CallNotPermittedException.class);
+        assertThat((breaker.tryAcquireCallPermission() != null)).isFalse();
+        assertThatThrownBy(breaker::acquireCallPermission).isInstanceOf(CallNotPermittedException.class);
         assertCounts(breaker, 8, 6);
         breaker.reset();
-        breaker.acquirePermission();
+        breaker.acquireCallPermission();
 
-        assertThat(breaker.tryAcquirePermission()).isTrue();
+        assertThat((breaker.tryAcquireCallPermission() != null)).isTrue();
         assertCounts(breaker, 10, 8);
     }
 
@@ -249,24 +249,20 @@ class CircuitBreakerAdmissionMetricsTest {
                 .minimumPhaseDuration(Duration.ofSeconds(10))
                 .failureStrategy(HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK).build()).build());
         enterRecovery(breaker);
-        acquireAdmitted(breaker);
-        breaker.onSuccess(0, TimeUnit.NANOSECONDS);
-        acquireAdmitted(breaker);
-        breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+        acquireAdmitted(breaker).onSuccess(0, TimeUnit.NANOSECONDS);
+        acquireAdmitted(breaker).onSuccess(0, TimeUnit.NANOSECONDS);
 
         assertCounts(breaker, 5, 2);
         clock.advance(Duration.ofSeconds(10));
 
-        acquireAdmitted(breaker);
+        CallPermission pending = acquireAdmitted(breaker);
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(25);
         assertCounts(breaker, 9, 3);
-        breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+        pending.onSuccess(0, TimeUnit.NANOSECONDS);
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(50);
         assertCounts(breaker, 9, 3);
-        acquireAdmitted(breaker);
-        breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
-        acquireAdmitted(breaker);
-        breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
+        acquireAdmitted(breaker).onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
+        acquireAdmitted(breaker).onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("unhealthy"));
 
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(25);
         assertCounts(breaker, 13, 5);
@@ -274,7 +270,7 @@ class CircuitBreakerAdmissionMetricsTest {
         breaker.reset();
 
         assertCounts(breaker, 13, 5);
-        breaker.acquirePermission();
+        breaker.acquireCallPermission();
 
         assertCounts(breaker, 14, 6);
         assertThat(previous.getNumberOfAttempts()).isEqualTo(13);
@@ -306,7 +302,7 @@ class CircuitBreakerAdmissionMetricsTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<Boolean> permission = executor.submit(() -> {
-                breaker.acquirePermission();
+                breaker.acquireCallPermission();
                 return true;
             });
 
@@ -413,21 +409,33 @@ class CircuitBreakerAdmissionMetricsTest {
     }
 
     private static boolean permission(CircuitBreaker breaker, boolean throwing) {
+        if (breaker.getCircuitBreakerConfig().getHalfOpenRecoveryConfig() == null) {
+            if (!throwing) {
+                return breaker.tryAcquirePermission();
+            }
+            try {
+                breaker.acquirePermission();
+                return true;
+            } catch (CallNotPermittedException expected) {
+                return false;
+            }
+        }
         if (!throwing) {
-            return breaker.tryAcquirePermission();
+            return (breaker.tryAcquireCallPermission() != null);
         }
         try {
-            breaker.acquirePermission();
+            breaker.acquireCallPermission();
             return true;
         } catch (CallNotPermittedException expected) {
             return false;
         }
     }
 
-    private static void acquireAdmitted(CircuitBreaker breaker) {
+    private static CallPermission acquireAdmitted(CircuitBreaker breaker) {
         for (int attempt = 0; attempt < 100; attempt++) {
-            if (breaker.tryAcquirePermission()) {
-                return;
+            CallPermission permission = breaker.tryAcquireCallPermission();
+            if (permission != null) {
+                return permission;
             }
         }
         throw new AssertionError("Positive recovery percentage must admit within 100 offers");

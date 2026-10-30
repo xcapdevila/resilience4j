@@ -15,6 +15,7 @@
  */
 package io.github.resilience4j.reactor.circuitbreaker.operator;
 
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.reactor.AbstractSubscriber;
 import org.reactivestreams.Subscriber;
@@ -32,6 +33,7 @@ import static java.util.Objects.requireNonNull;
 class CircuitBreakerSubscriber<T> extends AbstractSubscriber<T> {
 
     private final CircuitBreaker circuitBreaker;
+    private final CallPermission permission;
 
     private final long start;
     private final boolean singleProducer;
@@ -39,11 +41,12 @@ class CircuitBreakerSubscriber<T> extends AbstractSubscriber<T> {
     private final AtomicBoolean successSignaled = new AtomicBoolean(false);
     private final AtomicBoolean eventWasEmitted = new AtomicBoolean(false);
 
-    protected CircuitBreakerSubscriber(CircuitBreaker circuitBreaker,
+    protected CircuitBreakerSubscriber(CircuitBreaker circuitBreaker, CallPermission permission,
         CoreSubscriber<? super T> downstreamSubscriber,
         boolean singleProducer) {
         super(downstreamSubscriber);
         this.circuitBreaker = requireNonNull(circuitBreaker);
+        this.permission = requireNonNull(permission);
         this.singleProducer = singleProducer;
         this.start = circuitBreaker.getCurrentTimestamp();
     }
@@ -52,7 +55,7 @@ class CircuitBreakerSubscriber<T> extends AbstractSubscriber<T> {
     protected void hookOnNext(T value) {
         if (!isDisposed()) {
             if (singleProducer && successSignaled.compareAndSet(false, true)) {
-                circuitBreaker.onResult(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit(), value);
+                permission.onResult(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit(), value);
             }
             eventWasEmitted.set(true);
 
@@ -63,7 +66,7 @@ class CircuitBreakerSubscriber<T> extends AbstractSubscriber<T> {
     @Override
     protected void hookOnComplete() {
         if (successSignaled.compareAndSet(false, true)) {
-            circuitBreaker.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
+            permission.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
         }
 
         downstreamSubscriber.onComplete();
@@ -71,18 +74,20 @@ class CircuitBreakerSubscriber<T> extends AbstractSubscriber<T> {
 
     @Override
     public void hookOnCancel() {
-        if (!successSignaled.get()) {
+        if (successSignaled.compareAndSet(false, true)) {
             if (eventWasEmitted.get()) {
-                circuitBreaker.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
             } else {
-                circuitBreaker.releasePermission();
+                permission.release();
             }
         }
     }
 
     @Override
     protected void hookOnError(Throwable e) {
-        circuitBreaker.onError(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit(), e);
+        if (successSignaled.compareAndSet(false, true)) {
+            permission.onError(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit(), e);
+        }
         downstreamSubscriber.onError(e);
     }
 }

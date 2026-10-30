@@ -3,6 +3,7 @@ package io.github.resilience4j.circuitbreaker.operator;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.reactivex.Completable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -22,6 +23,11 @@ import static org.mockito.Mockito.never;
 class CompletableCircuitBreakerTest {
 
     private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class, RETURNS_DEEP_STUBS);
+
+    @BeforeEach
+    void useContextualPermissionForwarder() {
+        given(circuitBreaker.tryAcquireCallPermission()).willCallRealMethod();
+    }
 
     @Test
     void shouldSubscribeToCompletable() {

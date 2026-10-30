@@ -37,6 +37,7 @@ class FluxCircuitBreakerTest {
     @BeforeEach
     void setUp() {
         circuitBreaker = mock(CircuitBreaker.class, RETURNS_DEEP_STUBS);
+        given(circuitBreaker.tryAcquireCallPermission()).willCallRealMethod();
     }
 
     @Test

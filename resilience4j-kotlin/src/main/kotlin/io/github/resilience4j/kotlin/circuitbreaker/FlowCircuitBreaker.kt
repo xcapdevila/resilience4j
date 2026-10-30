@@ -48,18 +48,18 @@ import kotlin.coroutines.coroutineContext
  */
 fun <T> Flow<T>.circuitBreaker(circuitBreaker: CircuitBreaker): Flow<T> =
     flow {
-        circuitBreaker.acquirePermission()
+        val permission = circuitBreaker.acquireCallPermission()
 
         val start = System.nanoTime()
         val source = this@circuitBreaker.onCompletion { e ->
             when {
-                isCancellation(coroutineContext, e) -> circuitBreaker
-                    .releasePermission()
+                isCancellation(coroutineContext, e) -> permission
+                    .release()
 
-                e == null -> circuitBreaker
+                e == null -> permission
                     .onSuccess(System.nanoTime() - start, TimeUnit.NANOSECONDS)
 
-                else -> circuitBreaker
+                else -> permission
                     .onError(System.nanoTime() - start, TimeUnit.NANOSECONDS, e)
             }
         }

@@ -47,14 +47,14 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** Contract regressions for compatible completion attribution and health-driven recovery. */
+/** Contract regressions for strict admission attribution and health-driven recovery. */
 class HalfOpenRecoveryContractTest {
 
     private static final Duration DWELL = Duration.ofSeconds(10);
     private static final int SAMPLE_SIZE = 10;
 
     @Test
-    void lateSeventyFivePercentCompletionsCanCloseHundredPercentWithItsCallsStillPending() {
+    void lateSeventyFivePercentCompletionsCannotCloseHundredPercentWithItsCallsStillPending() {
         Fixture fixture = new Fixture(config -> { });
         fixture.completeHealthyPhase();
         fixture.completeHealthyPhase();
@@ -73,16 +73,17 @@ class HalfOpenRecoveryContractTest {
         assertThat(hundredPercentCalls).allSatisfy(call ->
             assertThat(call.decorated.isDone()).isFalse());
         assertThat(fixture.breaker.getState())
-            .as("Compatible completion-time attribution accepts successes admitted in an older phase")
-            .isEqualTo(CLOSED);
-        assertThat(fixture.breaker.getHalfOpenPhase().isActive()).isFalse();
+            .as("Only outcomes admitted in this exact 100% phase visit may validate it")
+            .isEqualTo(HALF_OPEN);
+        assertThat(fixture.breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(100);
+        assertThat(fixture.breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
 
         hundredPercentCalls.forEach(call -> call.backend.completeExceptionally(
             new IllegalStateException("Backend rejects load admitted at 100%")));
         assertThat(hundredPercentCalls).allSatisfy(call ->
             assertThat(call.decorated.isCompletedExceptionally()).isTrue());
         assertThat(fixture.breaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(SAMPLE_SIZE);
-        assertThat(fixture.breaker.getState()).isEqualTo(CLOSED);
+        assertThat(fixture.breaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
     }
 
     @Test

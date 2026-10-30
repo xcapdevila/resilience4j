@@ -1,0 +1,101 @@
+= Experimental invocation ownership for gradual recovery
+
+This branch evaluates a stricter alternative to the API-compatible gradual recovery
+candidate. Its version is `4.0.0-phased-context-SNAPSHOT`, a fork artifact rather than an
+official release. The intended upstream candidate remains
+`contribution/phased-half-open-recovery-review`, version `3.0.0-phased-SNAPSHOT`.
+
+== The two contracts
+
+[cols="1,2,2",options="header"]
+|===
+|Concern |Conservative candidate |Experimental contextual fork
+|Phase health samples |Recorded in the phase current at completion |Recorded against the granting phase visit
+|Late 75-percent result at 100 percent |Can contribute to the 100-percent window |Cannot validate the 100-percent window
+|Admission between phases |Continuous |Continuous
+|Standard finite-probe policy |Existing API and behavior |Existing API and behavior
+|Built-in decorators |Existing public API |Same decorator entry points, handle captured internally
+|Manual gradual calls |Existing tokenless API |Invocation handle required in every state
+|===
+
+Both flavors preserve the public OPEN -> HALF_OPEN -> CLOSED states and the target,
+phase and admission metrics. Neither flavor imposes an absolute RPS or concurrency cap.
+The conservative flavor deliberately accepts completion-time mixing instead of adding
+public API surface. Smaller steps reduce the load increment but do not guarantee fewer
+foreign completions: latency, dwell, sample count and outstanding traffic also matter.
+
+== Manual migration
+
+Decorated synchronous, CompletionStage, Future, Vavr, Reactor, RxJava2, RxJava3 and Kotlin
+calls capture ownership internally. Standard native breakers reuse a forwarding handle,
+with no per-invocation ownership allocation. Existing implementations of the interface
+receive default forwarding methods; a custom implementation must override them to offer
+the native fork's strict ownership guarantee.
+
+For manual gradual usage, replace the separate admission and outcome calls with:
+
+[source,java]
+----
+CallPermission permission = breaker.acquireCallPermission();
+long started = System.nanoTime();
+try {
+    Response result = paymentProvider.pay();
+    permission.onResult(System.nanoTime() - started, TimeUnit.NANOSECONDS, result);
+    return result;
+} catch (Exception failure) {
+    permission.onError(System.nanoTime() - started, TimeUnit.NANOSECONDS, failure);
+    throw failure;
+}
+----
+
+`tryAcquireCallPermission()` returns null for an admission rejection; the throwing form
+uses the usual `CallNotPermittedException`. Both count one attempt per acquisition.
+Call `release()` when an admitted invocation is cancelled or will not execute. A native
+gradual handle accepts only its first terminal notification, including when a classifier
+throws; later notifications are ignored. Do not share one handle between invocations.
+
+For a native breaker configured with gradual recovery, the tokenless methods
+`acquirePermission`, `tryAcquirePermission`, `releasePermission`, `onSuccess`, `onError`
+and `onResult` throw `IllegalStateException` with migration instructions in every state.
+This intentional incompatibility is confined to the experimental fork. The standard
+finite-probe policy retains those APIs. Third-party integrations that directly use them
+must migrate before enabling gradual recovery on this variant.
+
+The experimental CompletionStage decorator additionally completes its returned promise
+exceptionally when result/error classification throws. That error handling also applies
+to standard-mode decorators; it does not change ordinary finite-probe admission. It is
+not a guarantee for arbitrary throwing user timestamp functions or every external callback.
+
+== Ownership and metrics
+
+The handle captures the actual granting state through the admission path, including an
+OPEN-to-HALF_OPEN transition. It does not pair a separate phase snapshot with an admission,
+which would race with another transition. Every phase visit has a distinct owner; stepping
+back to phase 2 cannot revive a handle from a previous visit to phase 2. Reset and
+administrative state changes likewise prevent an old owner from changing a newer state.
+
+An obsolete invocation still emits its actual outcome event and contributes to cumulative
+event-based timers. It cannot populate a newer health window, validate a later phase, or
+trip a replacement CLOSED owner. Ignored outcomes and released permissions supply no health
+samples. The configured healthy sample window can close a phase while other invocations
+admitted in that visit are still pending; this is sample-based validation, not a drain.
+Those later outcomes remain observable on the retired owner. Event counts therefore need not equal the number of samples eligible in the
+current window. Existing state and target dashboards remain valid in both flavors.
+
+The global recovery deadline is unchanged across phase transitions. A positive deadline
+requires OPEN as its timeout target in both flavors; CLOSED is rejected at configuration
+time. No draining interval or new zero-admission phase is introduced.
+
+== Evidence and scope
+
+Native regressions cover late success/error/result callbacks, repeated STEP_BACK visits,
+reset ownership, throwing classifiers, duplicate completion, cancellation and standard-mode
+compatibility. Integration tests exercise actual asynchronous ownership rather than only
+mocked callback forwarding. The separate private demo repository contains a reproducible
+study that runs the same offered inputs against each real library artifact and reports
+artifact hashes, mixed-completion frequencies and model-conditional confidence intervals.
+
+Strict attribution does not establish dependency health beyond the samples and thresholds
+configured by the application. It adds handle allocation for native gradual invocations
+and a migration obligation for manual or third-party gradual integrations. Maintainers can
+evaluate that cost independently of the conservative upstream proposal.

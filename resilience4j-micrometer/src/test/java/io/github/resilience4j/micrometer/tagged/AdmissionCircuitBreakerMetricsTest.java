@@ -23,12 +23,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -58,17 +61,17 @@ class AdmissionCircuitBreakerMetricsTest {
             CircuitBreaker breaker = registry.circuitBreaker(NAME, config(new MutableClock(), 50, 10));
             enterRecovery(breaker);
 
-            offerMixedAttempts(breaker, 100);
+            List<CallPermission> pending = offerMixedAttempts(breaker, 100);
 
             assertCounts(meters, 100, 50);
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_CALLS).tag("kind", "successful").timer().count())
                 .isZero();
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_CALLS).tag("kind", "failed").timer().count())
                 .isZero();
-            breaker.onSuccess(1, TimeUnit.MILLISECONDS);
-            breaker.onError(1, TimeUnit.MILLISECONDS, new IllegalStateException("failure"));
-            breaker.onError(1, TimeUnit.MILLISECONDS, new IllegalArgumentException("ignored"));
-            breaker.releasePermission();
+            pending.get(0).onSuccess(1, TimeUnit.MILLISECONDS);
+            pending.get(1).onError(1, TimeUnit.MILLISECONDS, new IllegalStateException("failure"));
+            pending.get(2).onError(1, TimeUnit.MILLISECONDS, new IllegalArgumentException("ignored"));
+            pending.get(3).release();
 
             assertCounts(meters, 100, 50);
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge().value())
@@ -119,19 +122,21 @@ class AdmissionCircuitBreakerMetricsTest {
             Set<Meter.Id> originalIds = ids(meters);
             enterRecovery(breaker);
             for (int i = 0; i < 3; i++) {
-                if (breaker.tryAcquirePermission()) {
-                    breaker.onSuccess(1, TimeUnit.MILLISECONDS);
+                CallPermission permission = breaker.tryAcquireCallPermission();
+                if (permission != null) {
+                    permission.onSuccess(1, TimeUnit.MILLISECONDS);
                 }
             }
 
             assertCounts(meters, 3, 2);
             clock.advance(Duration.ofSeconds(10));
 
-            assertThat(breaker.tryAcquirePermission()).isFalse();
+            assertThat(breaker.tryAcquireCallPermission()).isNull();
             assertCounts(meters, 4, 2);
             assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(50);
-            assertThat(breaker.tryAcquirePermission()).isTrue();
-            breaker.onSuccess(1, TimeUnit.MILLISECONDS);
+            CallPermission finalPermission = breaker.tryAcquireCallPermission();
+            assertThat(finalPermission).isNotNull();
+            finalPermission.onSuccess(1, TimeUnit.MILLISECONDS);
             assertCounts(meters, 5, 3);
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge().value())
                 .isEqualTo(100);
@@ -141,10 +146,10 @@ class AdmissionCircuitBreakerMetricsTest {
             assertCounts(meters, 5, 3);
             assertThat(meters.get(DEFAULT_CIRCUIT_BREAKER_RECOVERY_TRAFFIC_PERCENTAGE).gauge().value())
                 .isZero();
-            breaker.acquirePermission();
+            breaker.acquireCallPermission();
             breaker.transitionToOpenState();
 
-            assertThat(breaker.tryAcquirePermission()).isFalse();
+            assertThat(breaker.tryAcquireCallPermission()).isNull();
             assertCounts(meters, 7, 4);
             assertThat(ids(meters)).containsExactlyInAnyOrderElementsOf(originalIds);
         } finally {
@@ -209,7 +214,7 @@ class AdmissionCircuitBreakerMetricsTest {
             registry.replace(NAME, replacement);
 
             assertThat(meters.get("custom.admission.attempts").functionCounter().count()).isZero();
-            replacement.acquirePermission();
+            replacement.acquireCallPermission();
 
             assertThat(meters.get("custom.admission.permitted").functionCounter().count()).isEqualTo(1);
             registry.remove(NAME);
@@ -282,18 +287,23 @@ class AdmissionCircuitBreakerMetricsTest {
         breaker.transitionToHalfOpenState();
     }
 
-    private static void offerMixedAttempts(CircuitBreaker breaker, int attempts) {
+    private static List<CallPermission> offerMixedAttempts(CircuitBreaker breaker, int attempts) {
+        List<CallPermission> pending = new ArrayList<>();
         for (int i = 0; i < attempts; i++) {
             if (i % 3 == 0) {
                 try {
-                    breaker.acquirePermission();
+                    pending.add(breaker.acquireCallPermission());
                 } catch (CallNotPermittedException expected) {
-                    // Intentional admission rejection; no completion is recorded.
+                    // No completion follows an admission rejection.
                 }
             } else {
-                breaker.tryAcquirePermission();
+                CallPermission permission = breaker.tryAcquireCallPermission();
+                if (permission != null) {
+                    pending.add(permission);
+                }
             }
         }
+        return pending;
     }
 
     private static double attempts(MeterRegistry meters) {

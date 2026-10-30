@@ -4,6 +4,7 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.test.HelloWorldService;
 import io.reactivex.rxjava3.core.Single;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -22,6 +23,11 @@ class SingleCircuitBreakerTest {
 
     private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class, RETURNS_DEEP_STUBS);
     private final HelloWorldService helloWorldService = mock(HelloWorldService.class);
+
+    @BeforeEach
+    void useContextualPermissionForwarder() {
+        given(circuitBreaker.tryAcquireCallPermission()).willCallRealMethod();
+    }
 
     @Test
     void shouldSubscribeToSingleJust() {

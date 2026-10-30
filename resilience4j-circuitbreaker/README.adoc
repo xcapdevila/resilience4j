@@ -1,4 +1,4 @@
-= Phased HALF_OPEN traffic recovery
+= Phased HALF_OPEN traffic recovery (experimental contextual fork)
 
 Phased recovery is an optional policy for dependencies, such as payment service providers,
 which regain capacity gradually. After OPEN, it admits an increasing percentage of attempted
@@ -32,6 +32,11 @@ CircuitBreakerRegistry registry = CircuitBreakerRegistry.of(standard);
 CircuitBreaker inventory = registry.circuitBreaker("inventory");
 CircuitBreaker paymentProvider = registry.circuitBreaker("payment-provider", gradual);
 ----
+
+This branch is the experimental `4.0.0-phased-context-SNAPSHOT` flavor. It adds
+invocation ownership to the conservative candidate in
+`contribution/phased-half-open-recovery-review`. It is a fork version, not an official
+Resilience4j release. See link:../CONTEXTUAL_RECOVERY.adoc[the API migration and comparison].
 
 == Implementation boundaries
 
@@ -82,17 +87,20 @@ must satisfy the duration and sample gates. Ignored outcomes and rejected attemp
 supply health samples. The 100% phase also needs its own duration and healthy window before
 the breaker transitions to CLOSED.
 
-Each phase has a fresh health window. As with the existing CircuitBreaker completion API,
-an in-flight call is recorded against the state/phase current when its completion is reported;
-the API does not carry an admission-generation token. Completion counters and timers exposed
-by Micrometer remain cumulative across phase changes.
+Each phase visit has a fresh health window. Built-in decorators capture a `CallPermission`
+at admission and report the result through that handle. A completion admitted in an earlier
+visit still emits the actual success, error or ignored-error event but cannot supply health
+samples to the current visit. Returning to the same phase index with STEP_BACK creates a
+new visit. Reset likewise invalidates the earlier owner. There is no admission pause while
+old calls finish. The final 100-percent phase requires its own eligible sample window.
 
-Consequently, results from calls admitted in an earlier phase can contribute to the current
-phase's window, including the final 100-percent phase. Validation means that the completion
-window is below the configured thresholds while that target is active; it does not guarantee
-that every sampled call was admitted at that target. This preserves the existing call API
-and continuous admission between phases. The effect depends on request latency, phase
-duration, sample size and offered traffic; a smaller percentage step alone does not bound it.
+Manual users of a native breaker with gradual recovery configured must use
+`acquireCallPermission()` or nullable `tryAcquireCallPermission()` and complete or release
+the returned handle. Legacy tokenless admission and outcome methods throw a clear
+`IllegalStateException` for that configured breaker in every state. Standard native breakers
+retain their legacy APIs and behavior. Custom `CircuitBreaker` implementations receive a
+default forwarding adapter; ownership guarantees require the native implementation or a
+custom implementation that overrides the context methods.
 
 This policy controls a share of attempts within one breaker instance. It does not impose a
 requests-per-second or concurrent-call limit and does not coordinate multiple application
@@ -187,7 +195,7 @@ and returns an empty snapshot for ordinary breakers. Admission collection and it
 metrics are enabled only when phased recovery is configured, so ordinary breakers retain
 their existing permission behavior without this optional accounting.
 
-An attempt is counted as it enters `acquirePermission()` or `tryAcquirePermission()`, and a
+An attempt is counted as it enters `acquireCallPermission()` or `tryAcquireCallPermission()`, and a
 permission is counted before that method returns successfully. State-machine delegation
 counts only once. A check still in progress, or one which throws, is included in attempts
 without yet being permitted. Completions, ignored outcomes, cancellation and returned

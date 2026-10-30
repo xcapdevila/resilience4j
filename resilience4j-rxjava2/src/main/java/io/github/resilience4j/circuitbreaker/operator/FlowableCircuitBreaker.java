@@ -16,6 +16,7 @@
 package io.github.resilience4j.circuitbreaker.operator;
 
 import io.github.resilience4j.AbstractSubscriber;
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.reactivex.Flowable;
 import io.reactivex.internal.subscriptions.EmptySubscription;
@@ -39,8 +40,9 @@ class FlowableCircuitBreaker<T> extends Flowable<T> {
 
     @Override
     protected void subscribeActual(Subscriber<? super T> downstream) {
-        if (circuitBreaker.tryAcquirePermission()) {
-            upstream.subscribe(new CircuitBreakerSubscriber(downstream));
+        CallPermission permission = circuitBreaker.tryAcquireCallPermission();
+        if (permission != null) {
+            upstream.subscribe(new CircuitBreakerSubscriber(downstream, permission));
         } else {
             downstream.onSubscribe(EmptySubscription.INSTANCE);
             downstream.onError(createCallNotPermittedException(circuitBreaker));
@@ -50,28 +52,30 @@ class FlowableCircuitBreaker<T> extends Flowable<T> {
     class CircuitBreakerSubscriber extends AbstractSubscriber<T> {
 
         private final long start;
+        private final CallPermission permission;
 
-        CircuitBreakerSubscriber(Subscriber<? super T> downstreamSubscriber) {
+        CircuitBreakerSubscriber(Subscriber<? super T> downstreamSubscriber, CallPermission permission) {
             super(downstreamSubscriber);
+            this.permission = permission;
             this.start = circuitBreaker.getCurrentTimestamp();
         }
 
         @Override
         public void hookOnError(Throwable t) {
-            circuitBreaker.onError(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit(), t);
+            permission.onError(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit(), t);
         }
 
         @Override
         public void hookOnComplete() {
-            circuitBreaker.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
+            permission.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
         }
 
         @Override
         public void hookOnCancel() {
             if (eventWasEmitted.get()) {
-                circuitBreaker.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(circuitBreaker.getCurrentTimestamp() - start, circuitBreaker.getTimestampUnit());
             } else {
-                circuitBreaker.releasePermission();
+                permission.release();
             }
         }
     }

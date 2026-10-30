@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.HalfOpenRecoveryConfig;
@@ -78,7 +79,7 @@ class HalfOpenRecoveryStateMachineTest {
                 fixture.clock.advance(DWELL);
                 fixture.acquireAdmitted();
                 assertPhase(fixture, i + 1, percentages[i]);
-                fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+                fixture.permission.onSuccess(0, TimeUnit.NANOSECONDS);
             }
 
             assertThat(fixture.breaker.getState()).isEqualTo(CLOSED);
@@ -111,7 +112,7 @@ class HalfOpenRecoveryStateMachineTest {
             Fixture fixture = new Fixture(recovery().initialTrafficPercentage(percentage).build());
             int admitted = 0;
             for (int i = 0; i < 10_000; i++) {
-                if (fixture.breaker.tryAcquirePermission()) {
+                if ((fixture.breaker.tryAcquireCallPermission() != null)) {
                     admitted++;
                 }
             }
@@ -128,7 +129,7 @@ class HalfOpenRecoveryStateMachineTest {
         for (int segment = 0; segment < 5; segment++) {
             int admitted = 0;
             for (int i = 0; i < 20; i++) {
-                admitted += fixture.breaker.tryAcquirePermission() ? 1 : 0;
+                admitted += (fixture.breaker.tryAcquireCallPermission() != null) ? 1 : 0;
             }
 
             assertThat(admitted).isEqualTo(1);
@@ -141,9 +142,9 @@ class HalfOpenRecoveryStateMachineTest {
         AtomicInteger rejectedEvents = new AtomicInteger();
         fixture.breaker.getEventPublisher().onCallNotPermitted(event -> rejectedEvents.incrementAndGet());
 
-        assertThat(fixture.breaker.tryAcquirePermission()).isTrue();
+        assertThat((fixture.breaker.tryAcquireCallPermission() != null)).isTrue();
 
-        assertThatThrownBy(fixture.breaker::acquirePermission)
+        assertThatThrownBy(fixture.breaker::acquireCallPermission)
             .isInstanceOf(CallNotPermittedException.class);
 
         assertThat(rejectedEvents.get()).isEqualTo(1);
@@ -158,13 +159,13 @@ class HalfOpenRecoveryStateMachineTest {
         fixture.success();
         assertPhase(fixture, 1, 50);
         fixture.clock.advance(DWELL.minusNanos(1));
-        fixture.breaker.tryAcquirePermission();
+        fixture.breaker.tryAcquireCallPermission();
         assertPhase(fixture, 1, 50);
         fixture.clock.advance(Duration.ofNanos(1));
 
         fixture.acquireAdmitted();
         assertPhase(fixture, 1, 50);
-        fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+        fixture.permission.onSuccess(0, TimeUnit.NANOSECONDS);
         assertPhase(fixture, 2, 100);
         fixture.success();
         fixture.success();
@@ -173,7 +174,7 @@ class HalfOpenRecoveryStateMachineTest {
         fixture.clock.advance(DWELL);
         fixture.acquireAdmitted();
         assertPhase(fixture, 2, 100);
-        fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+        fixture.permission.onSuccess(0, TimeUnit.NANOSECONDS);
 
         assertThat(fixture.breaker.getState()).isEqualTo(CLOSED);
         assertThat(fixture.breaker.getHalfOpenPhase().isActive()).isFalse();
@@ -196,7 +197,7 @@ class HalfOpenRecoveryStateMachineTest {
         fixture.success();
         fixture.clock.advance(Duration.ofSeconds(-30));
         for (int i = 0; i < 100; i++) {
-            fixture.breaker.tryAcquirePermission();
+            fixture.breaker.tryAcquireCallPermission();
         }
         fixture.success();
         assertPhase(fixture, 1, 50);
@@ -231,9 +232,9 @@ class HalfOpenRecoveryStateMachineTest {
     void slowSuccessfulCallsCanReopenRecovery() {
         Fixture fixture = new Fixture(recovery().build());
         fixture.acquireAdmitted();
-        fixture.breaker.onSuccess(61, TimeUnit.SECONDS);
+        fixture.permission.onSuccess(61, TimeUnit.SECONDS);
         fixture.acquireAdmitted();
-        fixture.breaker.onSuccess(61, TimeUnit.SECONDS);
+        fixture.permission.onSuccess(61, TimeUnit.SECONDS);
 
         assertThat(fixture.breaker.getState()).isEqualTo(OPEN);
     }
@@ -244,7 +245,7 @@ class HalfOpenRecoveryStateMachineTest {
             config.ignoreExceptions(IllegalArgumentException.class));
         for (int i = 0; i < 100; i++) {
             fixture.acquireAdmitted();
-            fixture.breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalArgumentException("ignored"));
+            fixture.permission.onError(0, TimeUnit.NANOSECONDS, new IllegalArgumentException("ignored"));
         }
 
         assertThat(fixture.breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
@@ -360,7 +361,7 @@ class HalfOpenRecoveryStateMachineTest {
         List<Integer> counts = concurrent(8, () -> {
             int accepted = 0;
             for (int i = 0; i < 1_000; i++) {
-                accepted += fixture.breaker.tryAcquirePermission() ? 1 : 0;
+                accepted += (fixture.breaker.tryAcquireCallPermission() != null) ? 1 : 0;
             }
             return accepted;
         });
@@ -378,12 +379,13 @@ class HalfOpenRecoveryStateMachineTest {
             }
         });
         fixture.success();
+        java.util.Queue<CallPermission> pending = new java.util.concurrent.ConcurrentLinkedQueue<>();
         for (int call = 0; call < 8; call++) {
-            fixture.acquireAdmitted();
+            pending.add(fixture.acquireAdmitted());
         }
         fixture.clock.advance(DWELL);
         concurrent(8, () -> {
-            fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+            pending.remove().onSuccess(0, TimeUnit.NANOSECONDS);
             return 1;
         });
         assertPhase(fixture, 2, 100);
@@ -419,16 +421,17 @@ class HalfOpenRecoveryStateMachineTest {
         AtomicInteger slow = new AtomicInteger();
         fixture.breaker.getEventPublisher().onFailureRateExceeded(event -> failures.incrementAndGet());
         fixture.breaker.getEventPublisher().onSlowCallRateExceeded(event -> slow.incrementAndGet());
+        CallPermission late = fixture.acquireAdmitted();
         fixture.success();
         fixture.acquireAdmitted();
-        fixture.breaker.onError(61, TimeUnit.SECONDS, new IllegalStateException("slow PSP failure"));
+        fixture.permission.onError(61, TimeUnit.SECONDS, new IllegalStateException("slow PSP failure"));
 
         assertThat(fixture.breaker.getState()).isEqualTo(OPEN);
         assertThat(failures.get()).isEqualTo(1);
         assertThat(slow.get()).isEqualTo(1);
         assertThat(fixture.breaker.getMetrics().getFailureRate()).isEqualTo(50);
         assertThat(fixture.breaker.getMetrics().getSlowCallRate()).isEqualTo(50);
-        fixture.breaker.onError(61, TimeUnit.SECONDS, new IllegalStateException("late outcome"));
+        late.onError(61, TimeUnit.SECONDS, new IllegalStateException("late outcome"));
 
         assertThat(failures.get()).isEqualTo(1);
         assertThat(slow.get()).isEqualTo(1);
@@ -492,7 +495,7 @@ class HalfOpenRecoveryStateMachineTest {
         fixture.clock.advance(Duration.ofSeconds(1));
         fixture.acquireAdmitted();
         assertPhase(fixture, 2, 50);
-        fixture.breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+        fixture.permission.onSuccess(0, TimeUnit.NANOSECONDS);
         assertPhase(fixture, 3, 75);
 
         assertThat(fixture.scheduler.tasks).hasSize(1);
@@ -536,6 +539,7 @@ class HalfOpenRecoveryStateMachineTest {
         final MutableClock clock = new MutableClock();
         final CapturingScheduler scheduler = new CapturingScheduler();
         final CircuitBreaker breaker;
+        CallPermission permission;
 
         Fixture(HalfOpenRecoveryConfig recovery) {
             this(recovery, config -> { });
@@ -551,30 +555,29 @@ class HalfOpenRecoveryStateMachineTest {
             breaker.transitionToHalfOpenState();
         }
 
-        void acquireAdmitted() {
+        CallPermission acquireAdmitted() {
             for (int i = 0; i < 100; i++) {
-                if (breaker.tryAcquirePermission()) {
-                    return;
+                permission = breaker.tryAcquireCallPermission();
+                if (permission != null) {
+                    return permission;
                 }
             }
             throw new AssertionError("A positive recovery percentage must admit within 100 attempts");
         }
 
         void success() {
-            acquireAdmitted();
-            breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+            acquireAdmitted().onSuccess(0, TimeUnit.NANOSECONDS);
         }
 
         void failure() {
-            acquireAdmitted();
-            breaker.onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("PSP failure"));
+            acquireAdmitted().onError(0, TimeUnit.NANOSECONDS, new IllegalStateException("PSP failure"));
         }
 
         void completeHealthyPhase() {
             success();
-            acquireAdmitted();
+            CallPermission pending = acquireAdmitted();
             clock.advance(DWELL);
-            breaker.onSuccess(0, TimeUnit.NANOSECONDS);
+            pending.onSuccess(0, TimeUnit.NANOSECONDS);
         }
     }
 

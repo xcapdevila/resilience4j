@@ -15,7 +15,13 @@ Both values are zero outside phased recovery. The traffic percentage is a recove
 
 The new gauges use the existing breaker name and custom tags. Phase and percentage are gauge values, never tags, so moving between phases does not create additional time series. They can be renamed with `CircuitBreakerMetricNames` in the same way as the existing metrics. Breakers without a recovery configuration retain their existing metric set.
 
-The buffered-call and failure/slow-call rate gauges describe the current evaluation window. During phased recovery this is the rolling sample window of completions recorded in the current phase and can reset on a phase transition. As with the existing circuit breaker API, an outcome is recorded against the state current when its completion callback runs; a call admitted in an earlier phase can finish later. A rate of `-1` means that insufficient outcomes have been observed. The event-based call timers and not-permitted counter remain cumulative across phase changes. Call timers count completed outcomes, so combining them with rejected-attempt counts does not measure an exact instantaneous admission percentage while calls are in flight.
+The buffered-call and failure/slow-call rate gauges describe the current evaluation window.
+In this experimental contextual fork, only outcomes whose admission owner is still the
+current phase visit contribute to that window. Late results from older visits remain
+observable in cumulative call timers but cannot validate the current phase. A rate of `-1`
+means insufficient eligible outcomes. Completion timers and rejection counters remain
+cumulative across phase changes, so they do not measure the admission percentage while
+calls are in flight. Use the dedicated admission counters below.
 
 == Observed admission percentage
 

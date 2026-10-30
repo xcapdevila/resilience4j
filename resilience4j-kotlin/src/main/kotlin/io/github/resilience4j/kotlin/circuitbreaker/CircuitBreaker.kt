@@ -41,19 +41,19 @@ suspend fun <T> CircuitBreaker.executeSuspendFunction(
     ignoreThrowablePredicate: (Throwable, CoroutineContext) -> Boolean,
     block: suspend () -> T
 ): T {
-    acquirePermission()
+    val permission = acquireCallPermission()
     val start = getCurrentTimestamp()
     try {
         val result = block()
         val durationInNanos = getCurrentTimestamp() - start
-        onResult(durationInNanos, TimeUnit.NANOSECONDS, result)
+        permission.onResult(durationInNanos, TimeUnit.NANOSECONDS, result)
         return result
     } catch (exception: Throwable) {
         if (ignoreThrowablePredicate(exception, coroutineContext)) {
-            releasePermission()
+            permission.release()
         } else {
             val durationInNanos = getCurrentTimestamp() - start
-            onError(durationInNanos, TimeUnit.NANOSECONDS, exception)
+            permission.onError(durationInNanos, TimeUnit.NANOSECONDS, exception)
         }
         throw exception
     }

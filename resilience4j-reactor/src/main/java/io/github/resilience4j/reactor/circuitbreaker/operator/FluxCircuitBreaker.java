@@ -15,6 +15,7 @@
  */
 package io.github.resilience4j.reactor.circuitbreaker.operator;
 
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import reactor.core.CoreSubscriber;
 import reactor.core.publisher.Flux;
@@ -34,8 +35,9 @@ class FluxCircuitBreaker<T> extends FluxOperator<T, T> {
 
     @Override
     public void subscribe(CoreSubscriber<? super T> actual) {
-        if (circuitBreaker.tryAcquirePermission()) {
-            source.subscribe(new CircuitBreakerSubscriber<>(circuitBreaker, actual, false));
+        CallPermission permission = circuitBreaker.tryAcquireCallPermission();
+        if (permission != null) {
+            source.subscribe(new CircuitBreakerSubscriber<>(circuitBreaker, permission, actual, false));
         } else {
             Operators.error(actual, createCallNotPermittedException(circuitBreaker));
         }

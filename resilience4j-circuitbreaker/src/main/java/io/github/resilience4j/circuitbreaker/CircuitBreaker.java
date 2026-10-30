@@ -22,6 +22,7 @@ import io.github.resilience4j.circuitbreaker.event.*;
 import io.github.resilience4j.circuitbreaker.internal.CircuitBreakerStateMachine;
 import io.github.resilience4j.core.EventConsumer;
 import io.github.resilience4j.core.functions.*;
+import io.github.resilience4j.core.lang.Nullable;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -66,17 +67,17 @@ public interface CircuitBreaker {
      */
     static <T> CheckedSupplier<T> decorateCheckedSupplier(CircuitBreaker circuitBreaker, CheckedSupplier<T> supplier) {
         return () -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 T result = supplier.get();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onResult(duration, circuitBreaker.getTimestampUnit(), result);
+                permission.onResult(duration, circuitBreaker.getTimestampUnit(), result);
                 return result;
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -98,7 +99,8 @@ public interface CircuitBreaker {
 
             final CompletableFuture<T> promise = new CompletableFuture<>();
 
-            if (!circuitBreaker.tryAcquirePermission()) {
+            final CallPermission permission = circuitBreaker.tryAcquireCallPermission();
+            if (permission == null) {
                 promise.completeExceptionally(
                     CallNotPermittedException.createCallNotPermittedException(circuitBreaker));
 
@@ -107,21 +109,31 @@ public interface CircuitBreaker {
                 try {
                     supplier.get().whenComplete((result, throwable) -> {
                         long duration = circuitBreaker.getCurrentTimestamp() - start;
-                        if (throwable != null) {
-                            if (throwable instanceof Exception) {
-                                circuitBreaker
-                                    .onError(duration, circuitBreaker.getTimestampUnit(), throwable);
+                        try {
+                            if (throwable != null) {
+                                if (throwable instanceof Exception) {
+                                    permission.onError(duration, circuitBreaker.getTimestampUnit(), throwable);
+                                }
+                                promise.completeExceptionally(throwable);
+                            } else {
+                                permission.onResult(duration, circuitBreaker.getTimestampUnit(), result);
+                                promise.complete(result);
                             }
-                            promise.completeExceptionally(throwable);
-                        } else {
-                            circuitBreaker.onResult(duration, circuitBreaker.getTimestampUnit(), result);
-                            promise.complete(result);
+                        } catch (Throwable recordingFailure) {
+                            // A classifier may throw after the underlying stage completed.
+                            // Always settle our promise; the one-shot permission prevents
+                            // a second classification or health sample for this invocation.
+                            promise.completeExceptionally(recordingFailure);
                         }
                     });
                 } catch (Exception exception) {
                     long duration = circuitBreaker.getCurrentTimestamp() - start;
-                    circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
-                    promise.completeExceptionally(exception);
+                    try {
+                        permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                        promise.completeExceptionally(exception);
+                    } catch (Throwable recordingFailure) {
+                        promise.completeExceptionally(recordingFailure);
+                    }
                 }
             }
 
@@ -138,16 +150,16 @@ public interface CircuitBreaker {
      */
     static CheckedRunnable decorateCheckedRunnable(CircuitBreaker circuitBreaker, CheckedRunnable runnable) {
         return () -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 runnable.run();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -163,17 +175,17 @@ public interface CircuitBreaker {
      */
     static <T> Callable<T> decorateCallable(CircuitBreaker circuitBreaker, Callable<T> callable) {
         return () -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 T result = callable.call();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onResult(duration, circuitBreaker.getTimestampUnit(), result);
+                permission.onResult(duration, circuitBreaker.getTimestampUnit(), result);
                 return result;
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -189,17 +201,17 @@ public interface CircuitBreaker {
      */
     static <T> Supplier<T> decorateSupplier(CircuitBreaker circuitBreaker, Supplier<T> supplier) {
         return () -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 T result = supplier.get();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onResult(duration, circuitBreaker.getTimestampUnit(), result);
+                permission.onResult(duration, circuitBreaker.getTimestampUnit(), result);
                 return result;
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -215,16 +227,16 @@ public interface CircuitBreaker {
      */
     static <T> Consumer<T> decorateConsumer(CircuitBreaker circuitBreaker, Consumer<T> consumer) {
         return (t) -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 consumer.accept(t);
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -240,16 +252,16 @@ public interface CircuitBreaker {
      */
     static <T> CheckedConsumer<T> decorateCheckedConsumer(CircuitBreaker circuitBreaker, CheckedConsumer<T> consumer) {
         return (t) -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 consumer.accept(t);
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -264,16 +276,16 @@ public interface CircuitBreaker {
      */
     static Runnable decorateRunnable(CircuitBreaker circuitBreaker, Runnable runnable) {
         return () -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 runnable.run();
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onSuccess(duration, circuitBreaker.getTimestampUnit());
+                permission.onSuccess(duration, circuitBreaker.getTimestampUnit());
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -291,17 +303,17 @@ public interface CircuitBreaker {
     static <T, R> Function<T, R> decorateFunction(CircuitBreaker circuitBreaker,
         Function<T, R> function) {
         return (T t) -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 R returnValue = function.apply(t);
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onResult(duration, circuitBreaker.getTimestampUnit(), returnValue);
+                permission.onResult(duration, circuitBreaker.getTimestampUnit(), returnValue);
                 return returnValue;
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -318,17 +330,17 @@ public interface CircuitBreaker {
      */
     static <T, R> CheckedFunction<T, R> decorateCheckedFunction(CircuitBreaker circuitBreaker, CheckedFunction<T, R> function) {
         return (T t) -> {
-            circuitBreaker.acquirePermission();
+            final CallPermission permission = circuitBreaker.acquireCallPermission();
             final long start = circuitBreaker.getCurrentTimestamp();
             try {
                 R result = function.apply(t);
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onResult(duration, circuitBreaker.getTimestampUnit(), result);
+                permission.onResult(duration, circuitBreaker.getTimestampUnit(), result);
                 return result;
             } catch (Exception exception) {
                 // Do not handle java.lang.Error
                 long duration = circuitBreaker.getCurrentTimestamp() - start;
-                circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), exception);
+                permission.onError(duration, circuitBreaker.getTimestampUnit(), exception);
                 throw exception;
             }
         };
@@ -413,7 +425,8 @@ public interface CircuitBreaker {
     static <T> Supplier<Future<T>> decorateFuture(CircuitBreaker circuitBreaker,
         Supplier<Future<T>> supplier) {
         return () -> {
-            if (!circuitBreaker.tryAcquirePermission()) {
+            final CallPermission permission = circuitBreaker.tryAcquireCallPermission();
+            if (permission == null) {
                 CompletableFuture<T> promise = new CompletableFuture<>();
                 promise.completeExceptionally(
                     CallNotPermittedException.createCallNotPermittedException(circuitBreaker));
@@ -421,12 +434,71 @@ public interface CircuitBreaker {
             } else {
                 final long start = circuitBreaker.getCurrentTimestamp();
                 try {
-                    return new CircuitBreakerFuture<>(circuitBreaker, supplier.get(), start);
+                    return new CircuitBreakerFuture<>(circuitBreaker, permission, supplier.get(), start);
                 } catch (Exception e) {
                     long duration = circuitBreaker.getCurrentTimestamp() - start;
-                    circuitBreaker.onError(duration, circuitBreaker.getTimestampUnit(), e);
+                    permission.onError(duration, circuitBreaker.getTimestampUnit(), e);
                     throw e;
                 }
+            }
+        };
+    }
+
+    /**
+     * Acquires a permission which carries an invocation's admission context through
+     * synchronous or asynchronous completion. Report exactly one outcome or release on
+     * the returned handle. Built-in decorators use this API automatically.
+     * <p>
+     * Native phased recovery binds the handle to the actual granting state and phase
+     * visit. Standard recovery preserves its existing completion semantics and may
+     * reuse a forwarding handle. The default implementation forwards the legacy API
+     * for compatibility with custom CircuitBreaker implementations.
+     *
+     * @return the admitted call's permission
+     * @throws CallNotPermittedException if this invocation is rejected
+     */
+    default CallPermission acquireCallPermission() {
+        acquirePermission();
+        return forwardingCallPermission(this);
+    }
+
+    /**
+     * Attempts to acquire an invocation-scoped permission. A null result means rejection,
+     * and must not be followed by an outcome notification. For an admitted invocation,
+     * report one outcome or release through the returned handle.
+     * <p>
+     * Native phased recovery binds the handle to the actual granting state and phase
+     * visit. Standard recovery preserves its existing completion semantics and may
+     * reuse a forwarding handle. The default forwards the legacy permission API for
+     * compatibility with custom CircuitBreaker implementations.
+     *
+     * @return a permission for an admitted invocation, or null on rejection
+     */
+    @Nullable
+    default CallPermission tryAcquireCallPermission() {
+        return tryAcquirePermission() ? forwardingCallPermission(this) : null;
+    }
+
+    private static CallPermission forwardingCallPermission(CircuitBreaker circuitBreaker) {
+        return new CallPermission() {
+            @Override
+            public void onSuccess(long duration, TimeUnit unit) {
+                circuitBreaker.onSuccess(duration, unit);
+            }
+
+            @Override
+            public void onError(long duration, TimeUnit unit, Throwable error) {
+                circuitBreaker.onError(duration, unit, error);
+            }
+
+            @Override
+            public void onResult(long duration, TimeUnit unit, @Nullable Object result) {
+                circuitBreaker.onResult(duration, unit, result);
+            }
+
+            @Override
+            public void release() {
+                circuitBreaker.releasePermission();
             }
         };
     }
@@ -442,7 +514,14 @@ public interface CircuitBreaker {
      * to call onSuccess or onError after the call is finished. If the call is cancelled before it
      * is invoked, you have to release the permission again.
      *
+     * <p>
+     * Native breakers configured with phased recovery require {@link CallPermission}
+     * instead of tokenless admission or completion methods, in every public state.
+     * Use {@link #acquireCallPermission()} or {@link #tryAcquireCallPermission()} and
+     * report the outcome or release on that handle. Standard recovery is unchanged.
+     *
      * @return {@code true} if a permission was acquired and {@code false} otherwise
+     * @throws IllegalStateException if native phased recovery is configured
      */
     boolean tryAcquirePermission();
 
@@ -454,6 +533,13 @@ public interface CircuitBreaker {
      * {@link CircuitBreaker#onError(long, TimeUnit, Throwable)} to signal a completed or failed call.
      * <p>
      * If the state is HALF_OPEN, the number of allowed test calls is increased by one.
+     * <p>
+     * Native breakers configured with phased recovery require {@link CallPermission}
+     * instead of tokenless admission or completion methods, in every public state.
+     * Use {@link #acquireCallPermission()} or {@link #tryAcquireCallPermission()} and
+     * report the outcome or release on that handle. Standard recovery is unchanged.
+     *
+     * @throws IllegalStateException if native phased recovery is configured
      */
     void releasePermission();
 
@@ -468,17 +554,31 @@ public interface CircuitBreaker {
      * decreased. Important: Make sure to call onSuccess or onError after the call is finished. If
      * the call is cancelled before it is invoked, you have to release the permission again.
      *
+     * <p>
+     * Native breakers configured with phased recovery require {@link CallPermission}
+     * instead of tokenless admission or completion methods, in every public state.
+     * Use {@link #acquireCallPermission()} or {@link #tryAcquireCallPermission()} and
+     * report the outcome or release on that handle. Standard recovery is unchanged.
+     *
      * @throws CallNotPermittedException when CircuitBreaker is OPEN or HALF_OPEN and no further
      *                                   test calls are permitted.
+     * @throws IllegalStateException if native phased recovery is configured
      */
     void acquirePermission();
 
     /**
      * Records a failed call. This method must be invoked when a call failed.
      *
+     * <p>
+     * Native breakers configured with phased recovery require {@link CallPermission}
+     * instead of tokenless admission or completion methods, in every public state.
+     * Use {@link #acquireCallPermission()} or {@link #tryAcquireCallPermission()} and
+     * report the outcome or release on that handle. Standard recovery is unchanged.
+     *
      * @param duration     The elapsed time duration of the call
      * @param durationUnit The duration unit
      * @param throwable    The throwable which must be recorded
+     * @throws IllegalStateException if native phased recovery is configured
      */
     void onError(long duration, TimeUnit durationUnit, Throwable throwable);
 
@@ -486,8 +586,15 @@ public interface CircuitBreaker {
      * Records a successful call. This method must be invoked when a call was
      * successful.
      *
+     * <p>
+     * Native breakers configured with phased recovery require {@link CallPermission}
+     * instead of tokenless admission or completion methods, in every public state.
+     * Use {@link #acquireCallPermission()} or {@link #tryAcquireCallPermission()} and
+     * report the outcome or release on that handle. Standard recovery is unchanged.
+     *
      * @param duration     The elapsed time duration of the call
      * @param durationUnit The duration unit
+     * @throws IllegalStateException if native phased recovery is configured
      */
     void onSuccess(long duration, TimeUnit durationUnit);
 
@@ -495,9 +602,16 @@ public interface CircuitBreaker {
      * This method must be invoked when a call returned a result
      * and the result predicate should decide if the call was successful or not.
      *
+     * <p>
+     * Native breakers configured with phased recovery require {@link CallPermission}
+     * instead of tokenless admission or completion methods, in every public state.
+     * Use {@link #acquireCallPermission()} or {@link #tryAcquireCallPermission()} and
+     * report the outcome or release on that handle. Standard recovery is unchanged.
+     *
      * @param duration     The elapsed time duration of the call
      * @param durationUnit The duration unit
      * @param result       The result of the protected function
+     * @throws IllegalStateException if native phased recovery is configured
      */
     void onResult(long duration, TimeUnit durationUnit, Object result);
 
@@ -1261,6 +1375,7 @@ public interface CircuitBreaker {
 
         private final Future<T> future;
         private final OnceConsumer<CircuitBreaker> onceToCircuitbreaker;
+        private final CallPermission permission;
         private final long start;
 
         CircuitBreakerFuture(CircuitBreaker circuitBreaker, Future<T> future) {
@@ -1268,7 +1383,13 @@ public interface CircuitBreaker {
         }
 
         CircuitBreakerFuture(CircuitBreaker circuitBreaker, Future<T> future, long start) {
+            this(circuitBreaker, forwardingCallPermission(circuitBreaker), future, start);
+        }
+
+        CircuitBreakerFuture(CircuitBreaker circuitBreaker, CallPermission permission,
+            Future<T> future, long start) {
             Objects.requireNonNull(future, "Non null Future is required to decorate");
+            this.permission = Objects.requireNonNull(permission);
             this.onceToCircuitbreaker = OnceConsumer.of(circuitBreaker);
             this.future = future;
             this.start = start;
@@ -1295,15 +1416,15 @@ public interface CircuitBreaker {
                 T v = future.get();
                 onceToCircuitbreaker
                     .applyOnce(cb ->
-                        cb.onResult(cb.getCurrentTimestamp() - start, cb.getTimestampUnit(), v)
+                        permission.onResult(cb.getCurrentTimestamp() - start, cb.getTimestampUnit(), v)
                     );
                 return v;
             } catch (CancellationException | InterruptedException e) {
-                onceToCircuitbreaker.applyOnce(cb -> cb.releasePermission());
+                onceToCircuitbreaker.applyOnce(cb -> permission.release());
                 throw e;
             } catch (Exception e) {
                 onceToCircuitbreaker.applyOnce(
-                    cb -> cb.onError(cb.getCurrentTimestamp() - start, cb.getTimestampUnit(), e));
+                    cb -> permission.onError(cb.getCurrentTimestamp() - start, cb.getTimestampUnit(), e));
                 throw e;
             }
         }
@@ -1315,15 +1436,15 @@ public interface CircuitBreaker {
                 T v = future.get(timeout, unit);
                 onceToCircuitbreaker
                     .applyOnce(cb ->
-                        cb.onResult(cb.getCurrentTimestamp()  - start, cb.getTimestampUnit(), v)
+                        permission.onResult(cb.getCurrentTimestamp()  - start, cb.getTimestampUnit(), v)
                     );
                 return v;
             } catch (CancellationException | InterruptedException e) {
-                onceToCircuitbreaker.applyOnce(CircuitBreaker::releasePermission);
+                onceToCircuitbreaker.applyOnce(cb -> permission.release());
                 throw e;
             } catch (Exception e) {
                 onceToCircuitbreaker.applyOnce(
-                    cb -> cb.onError(cb.getCurrentTimestamp() - start, cb.getTimestampUnit(), e));
+                    cb -> permission.onError(cb.getCurrentTimestamp() - start, cb.getTimestampUnit(), e));
                 throw e;
             }
         }

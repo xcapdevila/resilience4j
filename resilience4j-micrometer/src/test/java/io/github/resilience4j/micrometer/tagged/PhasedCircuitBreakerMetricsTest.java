@@ -30,6 +30,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -101,8 +102,9 @@ class PhasedCircuitBreakerMetricsTest {
             breaker.transitionToHalfOpenState();
 
             for (int i = 0; i < 1000; i++) {
-                assertThat(breaker.tryAcquirePermission()).as("Admission %s at 100%%", i).isTrue();
-                breaker.onSuccess(5, TimeUnit.MILLISECONDS);
+                CallPermission permission = breaker.tryAcquireCallPermission();
+                assertThat(permission).as("Admission %s at 100%%", i).isNotNull();
+                permission.onSuccess(5, TimeUnit.MILLISECONDS);
             }
 
             assertRecovery(meters, 1, 100);
@@ -110,8 +112,9 @@ class PhasedCircuitBreakerMetricsTest {
             assertThat(successCount(meters)).isEqualTo(1000);
             clock.advance(Duration.ofSeconds(10));
 
-            assertThat(breaker.tryAcquirePermission()).isTrue();
-            breaker.onSuccess(5, TimeUnit.MILLISECONDS);
+            CallPermission permission = breaker.tryAcquireCallPermission();
+            assertThat(permission).isNotNull();
+            permission.onSuccess(5, TimeUnit.MILLISECONDS);
 
             assertThat(breaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
             assertRecovery(meters, 0, 0);
@@ -132,9 +135,10 @@ class PhasedCircuitBreakerMetricsTest {
         for (int block = 0; block < 3; block++) {
             int admitted = 0;
             for (int i = 0; i < 100; i++) {
-                if (breaker.tryAcquirePermission()) {
+                CallPermission permission = breaker.tryAcquireCallPermission();
+                if (permission != null) {
                     admitted++;
-                    breaker.onSuccess(5, TimeUnit.MILLISECONDS);
+                    permission.onSuccess(5, TimeUnit.MILLISECONDS);
                 }
             }
 
@@ -331,11 +335,12 @@ class PhasedCircuitBreakerMetricsTest {
         int completed = 0;
         int denied = 0;
         for (int attempt = 0; attempt < 10000 && completed < count; attempt++) {
-            if (breaker.tryAcquirePermission()) {
+            CallPermission permission = breaker.tryAcquireCallPermission();
+            if (permission != null) {
                 if (failure) {
-                    breaker.onError(5, TimeUnit.MILLISECONDS, new IllegalStateException("unavailable"));
+                    permission.onError(5, TimeUnit.MILLISECONDS, new IllegalStateException("unavailable"));
                 } else {
-                    breaker.onSuccess(5, TimeUnit.MILLISECONDS);
+                    permission.onSuccess(5, TimeUnit.MILLISECONDS);
                 }
                 completed++;
             } else {

@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.codahale.metrics.MetricRegistry;
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -152,8 +153,9 @@ class PhasedCircuitBreakerMetricsTest {
     private static void completeAcceptedCalls(CircuitBreaker breaker, int expected) {
         int completed = 0;
         for (int attempt = 0; attempt < 1000 && completed < expected; attempt++) {
-            if (breaker.tryAcquirePermission()) {
-                breaker.onSuccess(5, TimeUnit.MILLISECONDS);
+            CallPermission permission = breaker.tryAcquireCallPermission();
+            if (permission != null) {
+                permission.onSuccess(5, TimeUnit.MILLISECONDS);
                 completed++;
             }
         }

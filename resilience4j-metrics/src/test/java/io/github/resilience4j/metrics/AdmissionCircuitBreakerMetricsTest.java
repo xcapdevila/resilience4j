@@ -23,11 +23,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.codahale.metrics.MetricRegistry;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CallPermission;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -57,14 +60,14 @@ class AdmissionCircuitBreakerMetricsTest {
         }
         enterRecovery(breaker);
 
-        offerMixedAttempts(breaker, 100);
+        List<CallPermission> pending = offerMixedAttempts(breaker, 100);
 
         assertCounts(meters, 100, 20);
         assertThat(breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
-        breaker.onSuccess(1, TimeUnit.MILLISECONDS);
-        breaker.onError(1, TimeUnit.MILLISECONDS, new IllegalStateException("failed"));
-        breaker.onError(1, TimeUnit.MILLISECONDS, new IllegalArgumentException("ignored"));
-        breaker.releasePermission();
+        pending.get(0).onSuccess(1, TimeUnit.MILLISECONDS);
+        pending.get(1).onError(1, TimeUnit.MILLISECONDS, new IllegalStateException("failed"));
+        pending.get(2).onError(1, TimeUnit.MILLISECONDS, new IllegalArgumentException("ignored"));
+        pending.get(3).release();
 
         assertCounts(meters, 100, 20);
         assertThat(meters.getGauges().get(PREFIX + "." + NAME + ".recovery.traffic.percentage").getValue())
@@ -106,28 +109,30 @@ class AdmissionCircuitBreakerMetricsTest {
         Set<String> metricNames = Set.copyOf(meters.getNames());
         enterRecovery(breaker);
         for (int i = 0; i < 3; i++) {
-            if (breaker.tryAcquirePermission()) {
-                breaker.onSuccess(1, TimeUnit.MILLISECONDS);
+            CallPermission permission = breaker.tryAcquireCallPermission();
+            if (permission != null) {
+                permission.onSuccess(1, TimeUnit.MILLISECONDS);
             }
         }
 
         assertCounts(meters, 3, 2);
         clock.advance(Duration.ofSeconds(10));
 
-        assertThat(breaker.tryAcquirePermission()).isFalse();
+        assertThat(breaker.tryAcquireCallPermission()).isNull();
         assertCounts(meters, 4, 2);
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(50);
-        assertThat(breaker.tryAcquirePermission()).isTrue();
-        breaker.onSuccess(1, TimeUnit.MILLISECONDS);
+        CallPermission finalPermission = breaker.tryAcquireCallPermission();
+        assertThat(finalPermission).isNotNull();
+        finalPermission.onSuccess(1, TimeUnit.MILLISECONDS);
         assertCounts(meters, 5, 3);
         assertThat(breaker.getHalfOpenPhase().getPermittedTrafficPercentage()).isEqualTo(100);
         breaker.reset();
 
         assertCounts(meters, 5, 3);
-        breaker.acquirePermission();
+        breaker.acquireCallPermission();
         breaker.transitionToOpenState();
 
-        assertThat(breaker.tryAcquirePermission()).isFalse();
+        assertThat(breaker.tryAcquireCallPermission()).isNull();
         assertCounts(meters, 7, 4);
         assertThat(meters.getNames()).containsExactlyInAnyOrderElementsOf(metricNames);
     }
@@ -144,7 +149,7 @@ class AdmissionCircuitBreakerMetricsTest {
         registry.replace(NAME, replacement);
 
         assertCounts(meters, 0, 0);
-        replacement.acquirePermission();
+        replacement.acquireCallPermission();
 
         assertCounts(meters, 1, 1);
         registry.remove(NAME);
@@ -186,18 +191,23 @@ class AdmissionCircuitBreakerMetricsTest {
         breaker.transitionToHalfOpenState();
     }
 
-    private static void offerMixedAttempts(CircuitBreaker breaker, int attempts) {
+    private static List<CallPermission> offerMixedAttempts(CircuitBreaker breaker, int attempts) {
+        List<CallPermission> pending = new ArrayList<>();
         for (int i = 0; i < attempts; i++) {
             if (i % 3 == 0) {
                 try {
-                    breaker.acquirePermission();
+                    pending.add(breaker.acquireCallPermission());
                 } catch (CallNotPermittedException expected) {
                     // No completion follows an admission rejection.
                 }
             } else {
-                breaker.tryAcquirePermission();
+                CallPermission permission = breaker.tryAcquireCallPermission();
+                if (permission != null) {
+                    pending.add(permission);
+                }
             }
         }
+        return pending;
     }
 
     private static void assertCounts(MetricRegistry meters, long attempts, long admitted) {

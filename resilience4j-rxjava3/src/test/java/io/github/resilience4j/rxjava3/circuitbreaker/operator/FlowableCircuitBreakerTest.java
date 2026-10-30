@@ -4,6 +4,7 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.test.HelloWorldService;
 import io.reactivex.rxjava3.core.Flowable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -21,6 +22,11 @@ import static org.mockito.Mockito.*;
 class FlowableCircuitBreakerTest {
 
     private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class, RETURNS_DEEP_STUBS);
+
+    @BeforeEach
+    void useContextualPermissionForwarder() {
+        given(circuitBreaker.tryAcquireCallPermission()).willCallRealMethod();
+    }
 
     @Test
     void shouldInvokeOnSuccess() {

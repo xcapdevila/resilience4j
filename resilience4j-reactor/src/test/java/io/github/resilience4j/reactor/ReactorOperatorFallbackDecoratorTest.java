@@ -42,6 +42,7 @@ class ReactorOperatorFallbackDecoratorTest {
     void setUp() {
         helloWorldService = mock(HelloWorldService.class);
         circuitBreaker = mock(CircuitBreaker.class, RETURNS_DEEP_STUBS);
+        given(circuitBreaker.tryAcquireCallPermission()).willCallRealMethod();
     }
 
     @Test
