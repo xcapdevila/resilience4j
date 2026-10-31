@@ -47,6 +47,52 @@ class HalfOpenRecoveryConfigTest {
     }
 
     @Test
+    void healthBoundsHaveIndependentDefaultsAndSurviveCopies() {
+        HalfOpenRecoveryConfig base = HalfOpenRecoveryConfig.custom().build();
+        assertThat(base.getMaxFailureRateForAdvance()).isEqualTo(5);
+        assertThat(base.getFailureRateThreshold()).isEqualTo(20);
+        assertThat(base.getMaxSlowCallRateForAdvance()).isEqualTo(10);
+        assertThat(base.getSlowCallRateThreshold()).isEqualTo(50);
+
+        HalfOpenRecoveryConfig changed = HalfOpenRecoveryConfig.from(base)
+            .maxFailureRateForAdvance(0).failureRateThreshold(10)
+            .maxSlowCallRateForAdvance(2.5f).slowCallRateThreshold(25).build();
+        HalfOpenRecoveryConfig copy = HalfOpenRecoveryConfig.from(changed).build();
+        assertThat(copy.getMaxFailureRateForAdvance()).isZero();
+        assertThat(copy.getFailureRateThreshold()).isEqualTo(10);
+        assertThat(copy.getMaxSlowCallRateForAdvance()).isEqualTo(2.5f);
+        assertThat(copy.getSlowCallRateThreshold()).isEqualTo(25);
+        assertThat(base.getFailureRateThreshold()).isEqualTo(20);
+    }
+
+    @Test
+    void healthBoundsRejectNonFiniteOutOfRangeAndOverlappingValues() {
+        for (float invalid : new float[]{Float.NaN, Float.NEGATIVE_INFINITY,
+            Float.POSITIVE_INFINITY, -1, 101}) {
+            assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().maxFailureRateForAdvance(invalid))
+                .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().failureRateThreshold(invalid))
+                .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().maxSlowCallRateForAdvance(invalid))
+                .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().slowCallRateThreshold(invalid))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().failureRateThreshold(0))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().slowCallRateThreshold(0))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().maxFailureRateForAdvance(20).build())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("maxFailureRateForAdvance must be less");
+        assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().maxSlowCallRateForAdvance(51).build())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("maxSlowCallRateForAdvance must be less");
+        assertThat(HalfOpenRecoveryConfig.custom().maxFailureRateForAdvance(0)
+            .maxSlowCallRateForAdvance(0).build().getMaxFailureRateForAdvance()).isZero();
+    }
+
+    @Test
     void rejectsOutOfRangePercentagesWhileZeroSelectsAutomaticInitial() {
         for (int invalid : new int[]{Integer.MIN_VALUE, -1, 101, 120, Integer.MAX_VALUE}) {
             assertThatThrownBy(() -> HalfOpenRecoveryConfig.custom().initialTrafficPercentage(invalid))

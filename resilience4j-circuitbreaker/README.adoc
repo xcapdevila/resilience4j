@@ -10,7 +10,11 @@ behavior is unchanged when `halfOpenRecoveryConfig` is absent.
 HalfOpenRecoveryConfig recovery = HalfOpenRecoveryConfig.custom()
     .trafficPercentageStep(5)
     .minimumPhaseDuration(Duration.ofSeconds(10))
-    .minimumNumberOfCalls(10)
+    .minimumNumberOfCalls(100)
+    .maxFailureRateForAdvance(5)
+    .failureRateThreshold(20)
+    .maxSlowCallRateForAdvance(10)
+    .slowCallRateThreshold(50)
     .failureStrategy(HalfOpenRecoveryConfig.FailureStrategy.OPEN)
     .build();
 
@@ -79,7 +83,8 @@ A phase advances only when both conditions hold:
 
 * Its minimum duration has elapsed.
 * Its bounded window of the latest `minimumNumberOfCalls` completed, recorded outcomes
-  satisfies the existing failure-rate and slow-call thresholds.
+  has a failure rate at most `maxFailureRateForAdvance` and a slow-call rate at most
+  `maxSlowCallRateForAdvance`.
 
 Healthy progress is evaluated when an outcome is recorded. A new admission after an idle
 period cannot advance a phase using only its old health window; a new recorded outcome
@@ -128,6 +133,39 @@ link:../resilience4j-all/src/test/java/io/github/resilience4j/decorators/HalfOpe
 exercise rejected retries and compare both recovery modes against independently recovering
 capacity models, including a case where the offered load exceeds what the ramp can protect.
 
+== Recovery health and hysteresis
+
+Recovery has its own health bounds. They do not change the ordinary CLOSED failure/slow-call
+thresholds or the standard finite-probe HALF_OPEN policy. A slow call is still classified using
+the enclosing `CircuitBreakerConfig.slowCallDurationThreshold`; only the recovery rate bounds
+are separate.
+
+[cols="1,1,2",options="header"]
+|===
+|Recovery setting |Default |Meaning
+|`maxFailureRateForAdvance` |5% |Inclusive maximum failure rate permitting advancement
+|`failureRateThreshold` |20% |Inclusive failure rate triggering the configured failure strategy
+|`maxSlowCallRateForAdvance` |10% |Inclusive maximum slow-call rate permitting advancement
+|`slowCallRateThreshold` |50% |Inclusive slow-call rate triggering the configured failure strategy
+|===
+
+Both health dimensions must be within their advancement maximum to increase traffic or close.
+Either regression threshold triggers OPEN or STEP_BACK. Between those bounds the circuit keeps
+its current target, continues admitting traffic, and updates the same rolling window. There is
+no separate draining interval. Both decisions require a complete `minimumNumberOfCalls` window;
+only advancement additionally requires `minimumPhaseDuration`. Bounds must be finite, with
+`0 <= advancement maximum < regression threshold <= 100` for each dimension. Zero is valid
+for an advancement maximum and requires no such recorded errors/slow calls in that window.
+It is not a regression threshold, so a healthy zero-error window never trips merely because
+its rate is zero.
+
+For example, with 100 recorded outcomes, the default failure bounds permit advancement at
+0 through 5 errors, hold the phase at 6 through 19 errors, and regress at 20 or more errors.
+The slow-call criterion can still hold or regress an otherwise successful phase. With fewer
+than 100 outcomes neither health decision is taken. Defaults are starting values rather than
+a claim about a provider's service objective; a window of ten outcomes has ten-percentage-point
+resolution, so one failure already prevents advancement with the default 5% maximum.
+
 == Failures and deadlines
 
 An unhealthy evaluation returns to OPEN by default. `STEP_BACK` instead returns to the preceding
@@ -152,7 +190,11 @@ Spring and Commons Configuration support the same nested options:
 resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.enabled=true
 resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.trafficPercentageStep=5
 resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.minimumPhaseDuration=10s
-resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.minimumNumberOfCalls=10
+resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.minimumNumberOfCalls=100
+resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.maxFailureRateForAdvance=5
+resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.failureRateThreshold=20
+resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.maxSlowCallRateForAdvance=10
+resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.slowCallRateThreshold=50
 resilience4j.circuitbreaker.instances.payment-provider.halfOpenRecovery.failureStrategy=OPEN
 ----
 

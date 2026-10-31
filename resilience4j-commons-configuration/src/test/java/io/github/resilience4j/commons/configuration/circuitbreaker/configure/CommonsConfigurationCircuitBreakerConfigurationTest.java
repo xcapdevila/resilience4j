@@ -71,6 +71,31 @@ class CommonsConfigurationCircuitBreakerConfigurationTest {
     }
 
     @Test
+    void recoveryHealthBoundsBindWithoutChangingOrdinaryHealth() throws Exception {
+        Configuration source = new MapConfiguration(Map.of(
+            "resilience4j.circuitbreaker.configs.shared.halfOpenRecovery.enabled", true,
+            "resilience4j.circuitbreaker.configs.shared.halfOpenRecovery.maxFailureRateForAdvance", 3f,
+            "resilience4j.circuitbreaker.configs.shared.halfOpenRecovery.failureRateThreshold", 15f,
+            "resilience4j.circuitbreaker.configs.shared.halfOpenRecovery.maxSlowCallRateForAdvance", 8f,
+            "resilience4j.circuitbreaker.configs.shared.halfOpenRecovery.slowCallRateThreshold", 40f,
+            "resilience4j.circuitbreaker.instances.payment.baseConfig", "shared",
+            "resilience4j.circuitbreaker.instances.payment.failureRateThreshold", 75f,
+            "resilience4j.circuitbreaker.instances.payment.halfOpenRecovery.maxFailureRateForAdvance", 0f));
+        var properties = CommonsConfigurationCircuitBreakerConfiguration.of(source);
+        var customizers = new CompositeCustomizer<
+            io.github.resilience4j.common.circuitbreaker.configuration.CircuitBreakerConfigCustomizer>(
+            Collections.emptyList());
+        var config = properties.createCircuitBreakerConfig("payment",
+            properties.getInstances().get("payment"), customizers);
+
+        assertThat(config.getFailureRateThreshold()).isEqualTo(75);
+        assertThat(config.getHalfOpenRecoveryConfig().getMaxFailureRateForAdvance()).isZero();
+        assertThat(config.getHalfOpenRecoveryConfig().getFailureRateThreshold()).isEqualTo(15);
+        assertThat(config.getHalfOpenRecoveryConfig().getMaxSlowCallRateForAdvance()).isEqualTo(8);
+        assertThat(config.getHalfOpenRecoveryConfig().getSlowCallRateThreshold()).isEqualTo(40);
+    }
+
+    @Test
     void configuredStepAboveOneHundredIsRejectedBeforeCreatingTheBreaker() throws Exception {
         Configuration source = new MapConfiguration(Map.of(
             "resilience4j.circuitbreaker.instances.invalid.halfOpenRecovery.enabled", true,

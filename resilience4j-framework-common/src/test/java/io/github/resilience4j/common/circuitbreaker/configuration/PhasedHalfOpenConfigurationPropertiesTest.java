@@ -248,6 +248,45 @@ class PhasedHalfOpenConfigurationPropertiesTest {
             .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void recoveryHealthSettingsInheritAndOverrideIndependentlyOfGeneralThresholds() {
+        var properties = configuredProperties();
+        properties.getConfigs().get("phased").getHalfOpenRecovery()
+            .setMaxFailureRateForAdvance(2f).setFailureRateThreshold(15f)
+            .setMaxSlowCallRateForAdvance(8f).setSlowCallRateThreshold(30f);
+        var instance = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
+            .setBaseConfig("phased").setFailureRateThreshold(75f)
+            .setHalfOpenRecovery(new HalfOpenRecoveryProperties().setMaxFailureRateForAdvance(0f));
+
+        var config = config(properties, instance);
+        var recovery = config.getHalfOpenRecoveryConfig();
+        assertThat(recovery.getMaxFailureRateForAdvance()).isZero();
+        assertThat(recovery.getFailureRateThreshold()).isEqualTo(15);
+        assertThat(recovery.getMaxSlowCallRateForAdvance()).isEqualTo(8);
+        assertThat(recovery.getSlowCallRateThreshold()).isEqualTo(30);
+        assertThat(config.getFailureRateThreshold()).isEqualTo(75);
+        assertThat(properties.getConfigs().get("phased").getHalfOpenRecovery()
+            .getMaxFailureRateForAdvance()).isEqualTo(2);
+    }
+
+    @Test
+    void recoveryHealthBoundsFromCustomizerSurviveInstanceOverrides() {
+        var properties = configuredProperties();
+        var instance = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()
+            .setBaseConfig("phased")
+            .setHalfOpenRecovery(new HalfOpenRecoveryProperties().setMaxFailureRateForAdvance(1f));
+        var customizer = CircuitBreakerConfigCustomizer.of("phased", builder -> builder
+            .halfOpenRecoveryConfig(HalfOpenRecoveryConfig.custom().failureRateThreshold(30)
+                .maxSlowCallRateForAdvance(4).slowCallRateThreshold(40).build()));
+
+        var recovery = properties.createCircuitBreakerConfig("backend", instance,
+            new CompositeCustomizer<>(Collections.singletonList(customizer))).getHalfOpenRecoveryConfig();
+        assertThat(recovery.getMaxFailureRateForAdvance()).isEqualTo(1);
+        assertThat(recovery.getFailureRateThreshold()).isEqualTo(30);
+        assertThat(recovery.getMaxSlowCallRateForAdvance()).isEqualTo(4);
+        assertThat(recovery.getSlowCallRateThreshold()).isEqualTo(40);
+    }
+
     private static CommonCircuitBreakerConfigurationProperties configuredProperties() {
         var properties = new CommonCircuitBreakerConfigurationProperties();
         var base = new CommonCircuitBreakerConfigurationProperties.InstanceProperties()

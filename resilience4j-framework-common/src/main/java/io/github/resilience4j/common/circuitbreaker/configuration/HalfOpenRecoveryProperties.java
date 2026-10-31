@@ -48,6 +48,18 @@ public class HalfOpenRecoveryProperties {
     @Nullable
     private HalfOpenRecoveryConfig.FailureStrategy failureStrategy;
 
+    @Nullable
+    private Float maxFailureRateForAdvance;
+
+    @Nullable
+    private Float failureRateThreshold;
+
+    @Nullable
+    private Float maxSlowCallRateForAdvance;
+
+    @Nullable
+    private Float slowCallRateThreshold;
+
     /**
      * Returns this configuration layer's enablement setting.
      *
@@ -177,6 +189,90 @@ public class HalfOpenRecoveryProperties {
         return this;
     }
 
+    /**
+     * Returns this layer's maxFailureRateForAdvance recovery setting.
+     *
+     * @return the percentage, or null to inherit
+     */
+    @Nullable
+    public Float getMaxFailureRateForAdvance() {
+        return maxFailureRateForAdvance;
+    }
+
+    /**
+     * Sets maxFailureRateForAdvance for gradual recovery. Validation occurs when the policy is built.
+     *
+     * @param percentage the percentage, or null to inherit
+     * @return these properties
+     */
+    public HalfOpenRecoveryProperties setMaxFailureRateForAdvance(Float percentage) {
+        this.maxFailureRateForAdvance = percentage;
+        return this;
+    }
+
+    /**
+     * Returns this layer's failureRateThreshold recovery setting.
+     *
+     * @return the percentage, or null to inherit
+     */
+    @Nullable
+    public Float getFailureRateThreshold() {
+        return failureRateThreshold;
+    }
+
+    /**
+     * Sets failureRateThreshold for gradual recovery. Validation occurs when the policy is built.
+     *
+     * @param percentage the percentage, or null to inherit
+     * @return these properties
+     */
+    public HalfOpenRecoveryProperties setFailureRateThreshold(Float percentage) {
+        this.failureRateThreshold = percentage;
+        return this;
+    }
+
+    /**
+     * Returns this layer's maxSlowCallRateForAdvance recovery setting.
+     *
+     * @return the percentage, or null to inherit
+     */
+    @Nullable
+    public Float getMaxSlowCallRateForAdvance() {
+        return maxSlowCallRateForAdvance;
+    }
+
+    /**
+     * Sets maxSlowCallRateForAdvance for gradual recovery. Validation occurs when the policy is built.
+     *
+     * @param percentage the percentage, or null to inherit
+     * @return these properties
+     */
+    public HalfOpenRecoveryProperties setMaxSlowCallRateForAdvance(Float percentage) {
+        this.maxSlowCallRateForAdvance = percentage;
+        return this;
+    }
+
+    /**
+     * Returns this layer's slowCallRateThreshold recovery setting.
+     *
+     * @return the percentage, or null to inherit
+     */
+    @Nullable
+    public Float getSlowCallRateThreshold() {
+        return slowCallRateThreshold;
+    }
+
+    /**
+     * Sets slowCallRateThreshold for gradual recovery. Validation occurs when the policy is built.
+     *
+     * @param percentage the percentage, or null to inherit
+     * @return these properties
+     */
+    public HalfOpenRecoveryProperties setSlowCallRateThreshold(Float percentage) {
+        this.slowCallRateThreshold = percentage;
+        return this;
+    }
+
     @Nullable
     static HalfOpenRecoveryProperties merge(@Nullable HalfOpenRecoveryProperties instance,
         @Nullable HalfOpenRecoveryProperties inherited) {
@@ -196,6 +292,14 @@ public class HalfOpenRecoveryProperties {
             ? instance.minimumNumberOfCalls : inherited.minimumNumberOfCalls;
         merged.failureStrategy = instance != null && instance.failureStrategy != null
             ? instance.failureStrategy : inherited.failureStrategy;
+        merged.maxFailureRateForAdvance = instance != null && instance.maxFailureRateForAdvance != null
+            ? instance.maxFailureRateForAdvance : inherited.maxFailureRateForAdvance;
+        merged.failureRateThreshold = instance != null && instance.failureRateThreshold != null
+            ? instance.failureRateThreshold : inherited.failureRateThreshold;
+        merged.maxSlowCallRateForAdvance = instance != null && instance.maxSlowCallRateForAdvance != null
+            ? instance.maxSlowCallRateForAdvance : inherited.maxSlowCallRateForAdvance;
+        merged.slowCallRateThreshold = instance != null && instance.slowCallRateThreshold != null
+            ? instance.slowCallRateThreshold : inherited.slowCallRateThreshold;
         return merged;
     }
 
@@ -206,7 +310,11 @@ public class HalfOpenRecoveryProperties {
             .setTrafficPercentageStep(config.getTrafficPercentageStep())
             .setMinimumPhaseDuration(config.getMinimumPhaseDuration())
             .setMinimumNumberOfCalls(config.getMinimumNumberOfCalls())
-            .setFailureStrategy(config.getFailureStrategy());
+            .setFailureStrategy(config.getFailureStrategy())
+            .setMaxFailureRateForAdvance(config.getMaxFailureRateForAdvance())
+            .setFailureRateThreshold(config.getFailureRateThreshold())
+            .setMaxSlowCallRateForAdvance(config.getMaxSlowCallRateForAdvance())
+            .setSlowCallRateThreshold(config.getSlowCallRateThreshold());
     }
 
     @Nullable
@@ -230,6 +338,18 @@ public class HalfOpenRecoveryProperties {
         }
         if (failureStrategy != null) {
             builder.failureStrategy(failureStrategy);
+        }
+        if (maxFailureRateForAdvance != null) {
+            builder.maxFailureRateForAdvance(maxFailureRateForAdvance);
+        }
+        if (failureRateThreshold != null) {
+            builder.failureRateThreshold(failureRateThreshold);
+        }
+        if (maxSlowCallRateForAdvance != null) {
+            builder.maxSlowCallRateForAdvance(maxSlowCallRateForAdvance);
+        }
+        if (slowCallRateThreshold != null) {
+            builder.slowCallRateThreshold(slowCallRateThreshold);
         }
         return builder.build();
     }

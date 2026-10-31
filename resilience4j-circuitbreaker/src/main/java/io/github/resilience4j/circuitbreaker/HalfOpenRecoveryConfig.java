@@ -44,6 +44,10 @@ public final class HalfOpenRecoveryConfig implements Serializable {
     private final Duration minimumPhaseDuration;
     private final int minimumNumberOfCalls;
     private final FailureStrategy failureStrategy;
+    private final float maxFailureRateForAdvance;
+    private final float failureRateThreshold;
+    private final float maxSlowCallRateForAdvance;
+    private final float slowCallRateThreshold;
 
     private HalfOpenRecoveryConfig(Builder builder) {
         initialTrafficPercentage = builder.initialTrafficPercentage;
@@ -51,11 +55,17 @@ public final class HalfOpenRecoveryConfig implements Serializable {
         minimumPhaseDuration = builder.minimumPhaseDuration;
         minimumNumberOfCalls = builder.minimumNumberOfCalls;
         failureStrategy = builder.failureStrategy;
+        maxFailureRateForAdvance = builder.maxFailureRateForAdvance;
+        failureRateThreshold = builder.failureRateThreshold;
+        maxSlowCallRateForAdvance = builder.maxSlowCallRateForAdvance;
+        slowCallRateThreshold = builder.slowCallRateThreshold;
     }
 
     /**
      * Creates a builder with automatic initial traffic, five-point increments, a ten-second
      * minimum phase duration, ten recorded outcomes and {@link FailureStrategy#OPEN}.
+     * Advancement allows at most 5% failures and 10% slow calls; regression starts
+     * at 20% failures or 50% slow calls. Intermediate health retains the current phase.
      *
      * @return a new builder
      */
@@ -132,6 +142,46 @@ public final class HalfOpenRecoveryConfig implements Serializable {
         return failureStrategy;
     }
 
+    /**
+     * Returns the inclusive maximum failure percentage permitting advancement.
+     * The complete recovery window and minimum phase duration are also required.
+     *
+     * @return the advancement failure percentage, default 5
+     */
+    public float getMaxFailureRateForAdvance() {
+        return maxFailureRateForAdvance;
+    }
+
+    /**
+     * Returns the inclusive failure percentage triggering the failure strategy.
+     * Values between the advancement maximum and this threshold keep the current phase.
+     *
+     * @return the regression failure percentage, default 20
+     */
+    public float getFailureRateThreshold() {
+        return failureRateThreshold;
+    }
+
+    /**
+     * Returns the inclusive maximum slow-call percentage permitting advancement.
+     * Slow calls use the enclosing CircuitBreakerConfig's duration threshold.
+     *
+     * @return the advancement slow-call percentage, default 10
+     */
+    public float getMaxSlowCallRateForAdvance() {
+        return maxSlowCallRateForAdvance;
+    }
+
+    /**
+     * Returns the inclusive slow-call percentage triggering the failure strategy.
+     * Values between the advancement maximum and this threshold keep the current phase.
+     *
+     * @return the regression slow-call percentage, default 50
+     */
+    public float getSlowCallRateThreshold() {
+        return slowCallRateThreshold;
+    }
+
     /** Builds an immutable percentage-based HALF_OPEN recovery policy. */
     public static final class Builder {
         private int initialTrafficPercentage = 0;
@@ -139,6 +189,10 @@ public final class HalfOpenRecoveryConfig implements Serializable {
         private Duration minimumPhaseDuration = Duration.ofSeconds(10);
         private int minimumNumberOfCalls = 10;
         private FailureStrategy failureStrategy = FailureStrategy.OPEN;
+        private float maxFailureRateForAdvance = 5;
+        private float failureRateThreshold = 20;
+        private float maxSlowCallRateForAdvance = 10;
+        private float slowCallRateThreshold = 50;
 
         private Builder() {
         }
@@ -149,6 +203,10 @@ public final class HalfOpenRecoveryConfig implements Serializable {
             minimumPhaseDuration = base.minimumPhaseDuration;
             minimumNumberOfCalls = base.minimumNumberOfCalls;
             failureStrategy = base.failureStrategy;
+            maxFailureRateForAdvance = base.maxFailureRateForAdvance;
+            failureRateThreshold = base.failureRateThreshold;
+            maxSlowCallRateForAdvance = base.maxSlowCallRateForAdvance;
+            slowCallRateThreshold = base.slowCallRateThreshold;
         }
 
         /**
@@ -232,13 +290,89 @@ public final class HalfOpenRecoveryConfig implements Serializable {
         }
 
         /**
+         * Sets the inclusive maximum failure percentage permitting advancement (default 5).
+         * Zero requires a recorded window without failures.
+         * This setting applies only to gradual recovery; ordinary state thresholds are unchanged.
+         *
+         * @param percentage a finite percentage from 0 to 100
+         * @return this builder
+         * @throws IllegalArgumentException if outside the range; ordering is checked by build
+         */
+        public Builder maxFailureRateForAdvance(float percentage) {
+            checkRate(percentage, "maxFailureRateForAdvance", true);
+            maxFailureRateForAdvance = percentage;
+            return this;
+        }
+
+        /**
+         * Sets the inclusive failure percentage triggering the failure strategy (default 20).
+         * This threshold must be greater than its advancement maximum.
+         * This setting applies only to gradual recovery; ordinary state thresholds are unchanged.
+         *
+         * @param percentage a finite percentage greater than zero and at most 100
+         * @return this builder
+         * @throws IllegalArgumentException if outside the range; ordering is checked by build
+         */
+        public Builder failureRateThreshold(float percentage) {
+            checkRate(percentage, "failureRateThreshold", false);
+            failureRateThreshold = percentage;
+            return this;
+        }
+
+        /**
+         * Sets the inclusive maximum slow-call percentage permitting advancement (default 10).
+         * Zero requires a recorded window without slow-calls.
+         * This setting applies only to gradual recovery; ordinary state thresholds are unchanged.
+         *
+         * @param percentage a finite percentage from 0 to 100
+         * @return this builder
+         * @throws IllegalArgumentException if outside the range; ordering is checked by build
+         */
+        public Builder maxSlowCallRateForAdvance(float percentage) {
+            checkRate(percentage, "maxSlowCallRateForAdvance", true);
+            maxSlowCallRateForAdvance = percentage;
+            return this;
+        }
+
+        /**
+         * Sets the inclusive slow-call percentage triggering the failure strategy (default 50).
+         * This threshold must be greater than its advancement maximum.
+         * This setting applies only to gradual recovery; ordinary state thresholds are unchanged.
+         *
+         * @param percentage a finite percentage greater than zero and at most 100
+         * @return this builder
+         * @throws IllegalArgumentException if outside the range; ordering is checked by build
+         */
+        public Builder slowCallRateThreshold(float percentage) {
+            checkRate(percentage, "slowCallRateThreshold", false);
+            slowCallRateThreshold = percentage;
+            return this;
+        }
+
+        /**
          * Creates an immutable policy. The 100-percent phase still requires validation
          * before the breaker closes; the global HALF_OPEN timeout remains independent.
          *
          * @return the configured recovery policy
          */
         public HalfOpenRecoveryConfig build() {
+            if (maxFailureRateForAdvance >= failureRateThreshold) {
+                throw new IllegalArgumentException(
+                    "maxFailureRateForAdvance must be less than failureRateThreshold");
+            }
+            if (maxSlowCallRateForAdvance >= slowCallRateThreshold) {
+                throw new IllegalArgumentException(
+                    "maxSlowCallRateForAdvance must be less than slowCallRateThreshold");
+            }
             return new HalfOpenRecoveryConfig(this);
+        }
+
+        private static void checkRate(float percentage, String name, boolean allowZero) {
+            if (!Float.isFinite(percentage) || percentage < 0 || percentage > 100
+                || !allowZero && percentage == 0) {
+                throw new IllegalArgumentException(name + " must be "
+                    + (allowZero ? "between 0 and 100" : "greater than zero and at most 100"));
+            }
         }
 
         private static void checkPercentage(int percentage, String name, int minimum) {
