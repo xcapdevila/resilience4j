@@ -31,7 +31,7 @@ import java.util.Objects;
 public final class HalfOpenRecoveryConfig implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    /** Response to a recovery evaluation at or above a configured failure/slow-call threshold. */
+    /** Response to an unhealthy evaluation or a rejected final 100-percent validation. */
     public enum FailureStrategy {
         /** Stop admitting calls and restart the normal OPEN wait interval. */
         OPEN,
@@ -65,7 +65,9 @@ public final class HalfOpenRecoveryConfig implements Serializable {
      * Creates a builder with automatic initial traffic, five-point increments, a ten-second
      * minimum phase duration, ten recorded outcomes and {@link FailureStrategy#OPEN}.
      * Advancement allows at most 5% failures and 10% slow calls; regression starts
-     * at 20% failures or 50% slow calls. Intermediate health retains the current phase.
+     * at 20% failures or 50% slow calls. Intermediate health retains phases below 100%.
+     * The final phase must pass validation or use the failure strategy once its duration
+     * and sample requirements are met; closing also requires the ordinary health bounds.
      *
      * @return a new builder
      */
@@ -115,7 +117,8 @@ public final class HalfOpenRecoveryConfig implements Serializable {
      * Returns the minimum time a healthy phase must remain active before advancing.
      * A newly recorded outcome must validate the phase after this time has elapsed;
      * elapsed time and an admission attempt alone cannot advance it. An unhealthy
-     * evaluation may reopen or step back sooner.
+     * evaluation may reopen or step back sooner. The final 100-percent phase is
+     * accepted or rejected at a recorded completion once both requirements hold.
      *
      * @return the positive minimum phase duration
      */
@@ -134,7 +137,7 @@ public final class HalfOpenRecoveryConfig implements Serializable {
     }
 
     /**
-     * Returns the response to an unhealthy phase evaluation.
+     * Returns the response to an unhealthy phase or rejected final validation.
      *
      * @return the configured failure strategy
      */
@@ -276,7 +279,8 @@ public final class HalfOpenRecoveryConfig implements Serializable {
         }
 
         /**
-         * Selects the response to an unhealthy phase (default {@link FailureStrategy#OPEN}).
+         * Selects the response to an unhealthy phase or rejected final validation
+         * (default {@link FailureStrategy#OPEN}).
          * STEP_BACK restarts the preceding phase's duration and outcome window without
          * extending the maximum duration of the complete recovery episode.
          *
@@ -350,8 +354,10 @@ public final class HalfOpenRecoveryConfig implements Serializable {
         }
 
         /**
-         * Creates an immutable policy. The 100-percent phase still requires validation
-         * before the breaker closes; the global HALF_OPEN timeout remains independent.
+         * Creates an immutable policy. The 100-percent phase requires validation against
+         * both recovery advancement and ordinary health bounds before closing. A complete
+         * sample which fails validation after the minimum duration uses the failure strategy.
+         * Evaluation remains completion-driven; the global HALF_OPEN timeout is independent.
          *
          * @return the configured recovery policy
          */

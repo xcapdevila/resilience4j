@@ -133,6 +133,30 @@ class HalfOpenRecoveryPolicyTest {
     }
 
     @Test
+    void finalPhaseRejectsIntermediateHealthAfterItsMinimumDuration() {
+        for (var strategy : HalfOpenRecoveryConfig.FailureStrategy.values()) {
+            var phase = new HalfOpenRecoveryPolicy(config().trafficPercentageStep(25)
+                .failureStrategy(strategy).build()).newPhase(3, START);
+            assertThat(phase.evaluate(Result.RECOVERY_HOLD, at(START.plus(DWELL).minusNanos(1))))
+                .isEqualTo(Decision.STAY);
+            assertThat(phase.evaluate(Result.RECOVERY_HOLD, at(START.plus(DWELL))))
+                .isEqualTo(strategy == STEP_BACK ? Decision.STEP_BACK : Decision.OPEN);
+            assertThat(phase.evaluate(Result.BELOW_MINIMUM_CALLS_THRESHOLD,
+                at(START.plusSeconds(600)))).isEqualTo(Decision.STAY);
+        }
+    }
+
+    @Test
+    void aSingleHundredPercentPhaseHasNoPrecedingStepToReturnTo() {
+        var phase = new HalfOpenRecoveryPolicy(config().trafficPercentageStep(100)
+            .failureStrategy(STEP_BACK).build()).newPhase(0, START);
+        assertThat(phase.evaluate(Result.RECOVERY_HOLD, at(START.plus(DWELL))))
+            .isEqualTo(Decision.OPEN);
+        assertThat(phase.evaluate(Result.BELOW_THRESHOLDS, at(START.plus(DWELL))))
+            .isEqualTo(Decision.CLOSE);
+    }
+
+    @Test
     void admissionIsEvenlyDistributedAndDoesNotExhaustAFiniteQuota() {
         var phase = new HalfOpenRecoveryPolicy(config().build()).newPhase(0, START);
         for (int segment = 0; segment < 100; segment++) {

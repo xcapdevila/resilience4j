@@ -475,6 +475,81 @@ class HalfOpenRecoveryStateMachineTest {
     }
 
     @Test
+    void finalIntermediateHealthStepsBackOnlyAfterDurationAndAFreshCompletion() {
+        Fixture fixture = finalPhaseFixture(STEP_BACK, config -> { });
+        AtomicInteger exceeded = new AtomicInteger();
+        AtomicInteger steppedBack = new AtomicInteger();
+        fixture.breaker.getEventPublisher().onFailureRateExceeded(event -> exceeded.incrementAndGet());
+        fixture.breaker.getEventPublisher().onSlowCallRateExceeded(event -> exceeded.incrementAndGet());
+        fixture.breaker.getEventPublisher().onHalfOpenPhaseTransition(event -> steppedBack.incrementAndGet());
+        fixture.clock.advance(DWELL.minusNanos(1));
+        recordWindow(fixture, 8);
+        assertPhase(fixture, 2, 100);
+        fixture.clock.advance(Duration.ofNanos(1));
+        assertPhase(fixture, 2, 100); // Time alone cannot evaluate the phase.
+        fixture.success();
+
+        assertPhase(fixture, 1, 75);
+        assertThat(steppedBack.get()).isEqualTo(1);
+        assertThat(exceeded.get()).isZero(); // No 20% failure or 50% slow threshold was exceeded.
+        assertThat(fixture.breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
+    }
+
+    @Test
+    void finalIntermediateHealthUsesTheOpenFailureStrategyWithoutAFalseThresholdEvent() {
+        Fixture fixture = finalPhaseFixture(HalfOpenRecoveryConfig.FailureStrategy.OPEN, config -> { });
+        AtomicInteger exceeded = new AtomicInteger();
+        fixture.breaker.getEventPublisher().onFailureRateExceeded(event -> exceeded.incrementAndGet());
+        fixture.clock.advance(DWELL);
+        recordWindow(fixture, 8);
+
+        assertThat(fixture.breaker.getState()).isEqualTo(OPEN);
+        assertThat(exceeded.get()).isZero();
+    }
+
+    @Test
+    void finalOrdinaryHealthGuardIsDeferredAndDoesNotAffectEarlierRecoveryPhases() {
+        Fixture fixture = finalPhaseFixture(STEP_BACK, config -> config.failureRateThreshold(1));
+        AtomicInteger exceeded = new AtomicInteger();
+        fixture.breaker.getEventPublisher().onFailureRateExceeded(event -> exceeded.incrementAndGet());
+        recordWindow(fixture, 1); // Healthy for smart advancement; exactly the ordinary OPEN bound.
+        assertPhase(fixture, 2, 100);
+        fixture.clock.advance(DWELL);
+        assertPhase(fixture, 2, 100);
+        fixture.success();
+
+        assertPhase(fixture, 1, 75);
+        assertThat(exceeded.get()).isZero();
+        fixture.clock.advance(DWELL);
+        recordWindow(fixture, 1);
+        assertPhase(fixture, 2, 100); // The ordinary guard applies only at the final target.
+    }
+
+    @Test
+    void finalSevereHealthStillStepsBackBeforeItsMinimumDuration() {
+        Fixture fixture = finalPhaseFixture(STEP_BACK, config -> { });
+        AtomicInteger exceeded = new AtomicInteger();
+        fixture.breaker.getEventPublisher().onFailureRateExceeded(event -> exceeded.incrementAndGet());
+        recordWindow(fixture, 20);
+
+        assertPhase(fixture, 1, 75);
+        assertThat(exceeded.get()).isEqualTo(1);
+    }
+
+    @Test
+    void finalValidationDoesNotDecideBeforeTheWholeSampleWindowExists() {
+        Fixture fixture = finalPhaseFixture(STEP_BACK, config -> { });
+        fixture.clock.advance(DWELL.multipliedBy(10));
+        for (int call = 0; call < 99; call++) {
+            fixture.failure();
+        }
+        assertPhase(fixture, 2, 100);
+        assertThat(fixture.breaker.getMetrics().getFailureRate()).isEqualTo(-1);
+        fixture.failure();
+        assertPhase(fixture, 1, 75);
+    }
+
+    @Test
     void exactFailureAndSlowThresholdsPublishOnceForTheWinningPhase() {
         Fixture fixture = new Fixture(recovery().failureRateThreshold(50).slowCallRateThreshold(50)
             .build(), config -> config.failureRateThreshold(50).slowCallRateThreshold(50));
@@ -581,6 +656,27 @@ class HalfOpenRecoveryStateMachineTest {
             return values;
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    private static Fixture finalPhaseFixture(HalfOpenRecoveryConfig.FailureStrategy strategy,
+        java.util.function.Consumer<CircuitBreakerConfig.Builder> customize) {
+        Fixture fixture = new Fixture(HalfOpenRecoveryConfig.custom().initialTrafficPercentage(75)
+            .trafficPercentageStep(25).minimumNumberOfCalls(100).minimumPhaseDuration(DWELL)
+            .failureStrategy(strategy).build(), customize);
+        fixture.clock.advance(DWELL);
+        recordWindow(fixture, 0);
+        assertPhase(fixture, 2, 100);
+        return fixture;
+    }
+
+    private static void recordWindow(Fixture fixture, int failures) {
+        for (int call = 0; call < 100; call++) {
+            if (call >= 100 - failures) {
+                fixture.failure();
+            } else {
+                fixture.success();
+            }
         }
     }
 

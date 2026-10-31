@@ -90,7 +90,9 @@ Healthy progress is evaluated when an outcome is recorded. A new admission after
 period cannot advance a phase using only its old health window; a new recorded outcome
 must satisfy the duration and sample gates. Ignored outcomes and rejected attempts do not
 supply health samples. The 100% phase also needs its own duration and healthy window before
-the breaker transitions to CLOSED.
+the breaker transitions to CLOSED. Its window must additionally be strictly below the ordinary
+failure-rate and slow-call-rate thresholds, so recovery cannot close using a health window
+which would already fail the configured ordinary criterion.
 
 Each phase visit has a fresh health window. Built-in decorators capture a `CallPermission`
 at admission and report the result through that handle. A completion admitted in an earlier
@@ -150,17 +152,26 @@ are separate.
 |===
 
 Both health dimensions must be within their advancement maximum to increase traffic or close.
-Either regression threshold triggers OPEN or STEP_BACK. Between those bounds the circuit keeps
-its current target, continues admitting traffic, and updates the same rolling window. There is
-no separate draining interval. Both decisions require a complete `minimumNumberOfCalls` window;
-only advancement additionally requires `minimumPhaseDuration`. Bounds must be finite, with
+Either regression threshold triggers OPEN or STEP_BACK. Below 100%, health between those bounds
+keeps the current target, continues admitting traffic, and updates the same rolling window.
+The final 100% phase is binary: once its duration and full sample are available at a recorded
+completion, it either satisfies both advancement maxima and the ordinary health bounds and
+closes, or applies the configured failure strategy. With STEP_BACK, rejection returns from 100%
+to the preceding target, such as 75%; a single-phase 100% ramp has no preceding target and opens.
+OPEN always reopens. There is no separate draining interval. Both decisions require a complete
+`minimumNumberOfCalls` window;
+advancement and non-severe final rejection additionally require `minimumPhaseDuration`.
+Reaching a recovery regression threshold may still reject the final phase sooner once its full
+sample exists. Bounds must be finite, with
 `0 <= advancement maximum < regression threshold <= 100` for each dimension. Zero is valid
 for an advancement maximum and requires no such recorded errors/slow calls in that window.
 It is not a regression threshold, so a healthy zero-error window never trips merely because
 its rate is zero.
 
-For example, with 100 recorded outcomes, the default failure bounds permit advancement at
-0 through 5 errors, hold the phase at 6 through 19 errors, and regress at 20 or more errors.
+For example, below 100% with 100 recorded outcomes, the default failure bounds permit advancement
+at 0 through 5 errors, hold the phase at 6 through 19 errors, and regress at 20 or more errors.
+At 100%, 6 through 19 errors reject final validation after the minimum duration instead of
+keeping an intermediate health band indefinitely.
 The slow-call criterion can still hold or regress an otherwise successful phase. With fewer
 than 100 outcomes neither health decision is taken. Defaults are starting values rather than
 a claim about a provider's service objective; a window of ten outcomes has ten-percentage-point
@@ -172,13 +183,21 @@ An unhealthy evaluation returns to OPEN by default. `STEP_BACK` instead returns 
 phase; a failure in the first phase returns to OPEN. Regression restarts that phase's minimum
 duration and health window. Threshold evaluation requires the configured recovery sample size;
 this option does not mean that the first individual failure necessarily trips the circuit.
+A final phase rejected because its health is intermediate, or because it fails the ordinary
+closing criterion, still publishes its normal phase/state transition. It does not publish a
+failure-rate/slow-call-rate-exceeded event unless the corresponding recovery regression
+threshold was actually reached.
 
 `maxWaitDurationInHalfOpenState` covers the entire recovery episode and is not restarted for
 each phase. With gradual recovery and a positive timeout, the target must be OPEN;
 configuration with a CLOSED target is rejected rather than bypassing the ramp. The standard
 finite-probe policy retains both timeout targets. Zero disables this global deadline.
 For example, 20 phases with a ten-second minimum need at least 200 seconds,
-and can need longer when traffic is sparse. Reset and administrative transitions cancel the
+and can need longer when traffic is sparse. Final validation is completion-driven, not driven
+by a separate phase timer: no traffic, incomplete samples or no new completion after the minimum
+duration can leave the phase waiting, including at 100%, until more outcomes arrive or this
+global deadline expires. Zero timeout permits that wait without a deadline. Reset and
+administrative transitions cancel the
 old recovery episode; obsolete timer callbacks cannot change a replacement state.
 
 == Configuration binding

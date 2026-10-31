@@ -1601,7 +1601,8 @@ public final class CircuitBreakerStateMachine implements CircuitBreaker {
             this.recovery = recovery;
             this.phase = recovery.policy.newPhase(phaseIndex, clock.instant());
             circuitBreakerMetrics = CircuitBreakerMetrics.forHalfOpenRecovery(
-                recovery.policy.getMinimumNumberOfCalls(), circuitBreakerConfig);
+                recovery.policy.getMinimumNumberOfCalls(), circuitBreakerConfig,
+                phase.getSnapshot().getPermittedTrafficPercentage() == 100);
         }
 
         @Override
