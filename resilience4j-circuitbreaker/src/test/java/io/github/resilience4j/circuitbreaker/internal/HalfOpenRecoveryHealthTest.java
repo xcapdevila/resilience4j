@@ -79,9 +79,28 @@ class HalfOpenRecoveryHealthTest {
         }
     }
 
+    @Test
+    void onlyTheFinalPhaseAlsoRequiresOrdinaryFailureAndSlowCallHealth() {
+        var policy = HalfOpenRecoveryConfig.custom().minimumNumberOfCalls(100).build();
+        var config = CircuitBreakerConfig.from(config(policy)).failureRateThreshold(1)
+            .slowCallRateThreshold(5).build();
+        assertThat(evaluate(1, 0, config, false)).isEqualTo(Result.BELOW_THRESHOLDS);
+        assertThat(evaluate(1, 0, config, true)).isEqualTo(Result.RECOVERY_HOLD);
+        assertThat(evaluate(0, 5, config, false)).isEqualTo(Result.BELOW_THRESHOLDS);
+        assertThat(evaluate(0, 5, config, true)).isEqualTo(Result.RECOVERY_HOLD);
+        assertThat(evaluate(0, 4, config, true)).isEqualTo(Result.BELOW_THRESHOLDS);
+        assertThat(evaluate(20, 0, config, true)).isEqualTo(Result.FAILURE_RATE_ABOVE_THRESHOLDS);
+        assertThat(evaluate(0, 50, config, true)).isEqualTo(Result.SLOW_CALL_RATE_ABOVE_THRESHOLDS);
+    }
+
     private static Result evaluate(int failures, int slowCalls) {
         var policy = HalfOpenRecoveryConfig.custom().minimumNumberOfCalls(100).build();
-        var metrics = CircuitBreakerMetrics.forHalfOpenRecovery(100, config(policy));
+        return evaluate(failures, slowCalls, config(policy), false);
+    }
+
+    private static Result evaluate(int failures, int slowCalls, CircuitBreakerConfig config,
+        boolean finalPhase) {
+        var metrics = CircuitBreakerMetrics.forHalfOpenRecovery(100, config, finalPhase);
         Result result = null;
         for (int call = 0; call < 100; call++) {
             long duration = call < slowCalls ? 61 : 0;

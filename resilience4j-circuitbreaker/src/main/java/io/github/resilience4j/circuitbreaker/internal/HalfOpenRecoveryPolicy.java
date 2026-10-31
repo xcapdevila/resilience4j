@@ -112,14 +112,22 @@ final class HalfOpenRecoveryPolicy {
 
         Decision evaluate(Result result, Clock clock) {
             if (Result.hasExceededThresholds(result)) {
-                return config.getFailureStrategy() == HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK
-                    && index > 0 ? Decision.STEP_BACK : Decision.OPEN;
+                return rejectPhase();
+            }
+            if (result == Result.RECOVERY_HOLD) {
+                return snapshot.getPermittedTrafficPercentage() == 100 && minimumDurationElapsed(clock)
+                    ? rejectPhase() : Decision.STAY;
             }
             if (result != BELOW_THRESHOLDS || !minimumDurationElapsed(clock)) {
                 return Decision.STAY;
             }
             return snapshot.getPermittedTrafficPercentage() == 100
                 ? Decision.CLOSE : Decision.ADVANCE;
+        }
+
+        private Decision rejectPhase() {
+            return config.getFailureStrategy() == HalfOpenRecoveryConfig.FailureStrategy.STEP_BACK
+                && index > 0 ? Decision.STEP_BACK : Decision.OPEN;
         }
     }
 }
