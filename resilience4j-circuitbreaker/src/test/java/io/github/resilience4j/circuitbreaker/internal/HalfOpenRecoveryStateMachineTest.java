@@ -412,9 +412,70 @@ class HalfOpenRecoveryStateMachineTest {
     }
 
     @Test
+    void holdsIntermediateHealthAndRequiresAFullWindowBeforeSteppingBack() {
+        Fixture fixture = new Fixture(HalfOpenRecoveryConfig.custom().initialTrafficPercentage(50)
+            .trafficPercentageStep(25).minimumNumberOfCalls(100).minimumPhaseDuration(DWELL)
+            .failureStrategy(STEP_BACK).build());
+        fixture.clock.advance(DWELL);
+        for (int call = 0; call < 100; call++) {
+            if (call < 6) {
+                fixture.failure();
+            } else {
+                fixture.success();
+            }
+        }
+        assertPhase(fixture, 1, 50);
+        assertThat(fixture.breaker.getMetrics().getFailureRate()).isEqualTo(6);
+        fixture.success(); // Evict one failure: exactly 5% is healthy enough to advance.
+        assertPhase(fixture, 2, 75);
+        assertThat(fixture.breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
+
+        for (int call = 0; call < 99; call++) {
+            if (call < 20) {
+                fixture.failure();
+            } else {
+                fixture.success();
+            }
+        }
+        assertPhase(fixture, 2, 75); // A single failure did not cause an immediate regression.
+        fixture.success(); // Complete the 100-outcome window, exactly 20% failures.
+        assertPhase(fixture, 1, 50); // Regression does not wait for the minimum dwell.
+        assertThat(fixture.breaker.getMetrics().getNumberOfBufferedCalls()).isZero();
+        fixture.failure();
+        assertPhase(fixture, 1, 50);
+        for (int call = 0; call < 99; call++) {
+            fixture.success();
+        }
+        assertPhase(fixture, 1, 50); // Healthy again, but the restarted dwell still applies.
+        fixture.clock.advance(DWELL);
+        fixture.success();
+        assertPhase(fixture, 2, 75);
+    }
+
+    @Test
+    void optingIntoRecoveryDoesNotTightenTheClosedState() {
+        CircuitBreaker breaker = new CircuitBreakerStateMachine("ordinary-closed-health",
+            CircuitBreakerConfig.custom().minimumNumberOfCalls(100).slidingWindowSize(100)
+                .failureRateThreshold(50).halfOpenRecoveryConfig(recovery().build()).build());
+        for (int call = 0; call < 100; call++) {
+            if (call < 20) {
+                try {
+                    breaker.executeRunnable(() -> { throw new IllegalStateException("failure"); });
+                } catch (IllegalStateException expected) {
+                    // Only technical failures are recorded; no administrative state forcing.
+                }
+            } else {
+                breaker.executeRunnable(() -> { });
+            }
+        }
+        assertThat(breaker.getState()).isEqualTo(CLOSED);
+        assertThat(breaker.getMetrics().getFailureRate()).isEqualTo(20);
+    }
+
+    @Test
     void exactFailureAndSlowThresholdsPublishOnceForTheWinningPhase() {
-        Fixture fixture = new Fixture(recovery().build(), config -> config
-            .failureRateThreshold(50).slowCallRateThreshold(50));
+        Fixture fixture = new Fixture(recovery().failureRateThreshold(50).slowCallRateThreshold(50)
+            .build(), config -> config.failureRateThreshold(50).slowCallRateThreshold(50));
         AtomicInteger failures = new AtomicInteger();
         AtomicInteger slow = new AtomicInteger();
         fixture.breaker.getEventPublisher().onFailureRateExceeded(event -> failures.incrementAndGet());

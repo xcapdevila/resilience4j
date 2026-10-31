@@ -124,6 +124,15 @@ class HalfOpenRecoveryPolicyTest {
     }
 
     @Test
+    void intermediateHealthCannotAdvanceOrRegressEvenAfterTheMinimumDuration() {
+        var phase = new HalfOpenRecoveryPolicy(config().failureStrategy(STEP_BACK).build())
+            .newPhase(1, START);
+        assertThat(phase.evaluate(Result.RECOVERY_HOLD, unreadableClock())).isEqualTo(Decision.STAY);
+        assertThat(phase.evaluate(Result.RECOVERY_HOLD, at(START.plusSeconds(600))))
+            .isEqualTo(Decision.STAY);
+    }
+
+    @Test
     void admissionIsEvenlyDistributedAndDoesNotExhaustAFiniteQuota() {
         var phase = new HalfOpenRecoveryPolicy(config().build()).newPhase(0, START);
         for (int segment = 0; segment < 100; segment++) {

@@ -173,6 +173,14 @@ public class CommonsConfigurationCircuitBreakerConfiguration extends CommonCircu
             if (recoveryConfiguration.containsKey("failureStrategy"))
                 recovery.setFailureStrategy(recoveryConfiguration.getEnum("failureStrategy",
                     HalfOpenRecoveryConfig.FailureStrategy.class));
+            if (recoveryConfiguration.containsKey("maxFailureRateForAdvance"))
+                recovery.setMaxFailureRateForAdvance(recoveryConfiguration.getFloat("maxFailureRateForAdvance"));
+            if (recoveryConfiguration.containsKey("failureRateThreshold"))
+                recovery.setFailureRateThreshold(recoveryConfiguration.getFloat("failureRateThreshold"));
+            if (recoveryConfiguration.containsKey("maxSlowCallRateForAdvance"))
+                recovery.setMaxSlowCallRateForAdvance(recoveryConfiguration.getFloat("maxSlowCallRateForAdvance"));
+            if (recoveryConfiguration.containsKey("slowCallRateThreshold"))
+                recovery.setSlowCallRateThreshold(recoveryConfiguration.getFloat("slowCallRateThreshold"));
             instanceProperties.setHalfOpenRecovery(recovery);
         }
 
